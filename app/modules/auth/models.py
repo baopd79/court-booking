@@ -23,7 +23,18 @@ class Tenant(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+
+class EmailVerificationToken(SQLModel, table=True):
+    __tablename__ = "email_verification_tokens"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id")
+    token_hash: str = Field(unique=True)
+    expires_at: datetime
+    used_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
 class User(SQLModel, table=True):
@@ -37,4 +48,4 @@ class User(SQLModel, table=True):
     status: UserStatus = Field(default=UserStatus.unverified)
     full_name: str | None = Field(default=None)
     phone: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
