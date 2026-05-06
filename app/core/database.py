@@ -1,43 +1,50 @@
 """Database engine + session factory.
 
-Pattern:
-- Engine = singleton, created at app startup
-- Session = per-request, injected via FastAPI Depends
-- Caller (service layer) chịu trách nhiệm commit/rollback
+Engine lazy-init để tương thích uvicorn --reload và testing.
 """
 
 from collections.abc import AsyncGenerator
+from functools import lru_cache
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.config import get_settings
 
-settings = get_settings()
 
-# Engine: singleton, manage connection pool
-engine = create_async_engine(
-    str(settings.database_url),
-    echo=settings.debug,  # log SQL khi DEBUG=true
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,  # detect stale connection
-    pool_recycle=3600,  # recycle sau 1h
-)
+@lru_cache
+def get_engine() -> AsyncEngine:
+    """Lazy singleton — engine tạo khi gọi lần đầu, cache lại."""
+    settings = get_settings()
+    return create_async_engine(
+        str(settings.database_url),
+        echo=settings.debug,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
 
-# Session factory: tạo session mới mỗi request
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,  # standard cho async
-    autoflush=False,  # explicit flush, tránh surprise query
-)
+
+@lru_cache
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Lazy session factory."""
+    return async_sessionmaker(
+        bind=get_engine(),
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency: yield session, auto close on exit.
 
     KHÔNG commit ở đây — service layer tự commit.
-    Exception trong request → session close → auto rollback.
     """
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         yield session

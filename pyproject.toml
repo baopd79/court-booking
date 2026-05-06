@@ -9,6 +9,7 @@ dependencies = [
     "asyncpg>=0.31.0",
     "bcrypt<4.1",
     "fastapi[standard]>=0.136.1",
+    "greenlet>=3.5.0",
     "httpx>=0.28.1",
     "passlib[bcrypt]>=1.7.4",
     "pydantic-settings>=2.14.0",
@@ -47,6 +48,7 @@ indent-style = "space"
 # ============ Pytest ============
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = [
