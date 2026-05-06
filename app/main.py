@@ -11,12 +11,15 @@ import traceback
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.database import get_engine
+from app.core.exceptions import AppException
 from app.core.redis import close_redis, redis_client
+from app.modules.auth.routes import router as auth_router
 
 settings = get_settings()
 
@@ -45,6 +48,21 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+# ===== Exception handlers =====
+
+
+@app.exception_handler(AppException)
+async def app_exception_handler(_request: Request, exc: AppException) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"error": {"code": exc.code, "message": exc.message}},
+    )
+
+
+# ===== Routers =====
+
+app.include_router(auth_router)
 
 
 # ===== Health checks =====
