@@ -18,7 +18,7 @@ from app.core.config import get_settings
 # Khi tạo module mới có model, thêm import vào đây.
 from app.modules.auth import models as auth_models  # noqa: F401
 
-# from app.modules.facility import models as facility_models
+from app.modules.facility import models as facility_models
 # from app.modules.booking import models as booking_models
 # from app.modules.payment import models as payment_models
 # from app.modules.notification import models as notification_models
