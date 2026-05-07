@@ -8,20 +8,36 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
+    AccountSuspendedError,
     EmailAlreadyExistsError,
+    EmailNotVerifiedError,
+    InvalidCredentialsError,
+    InvalidTokenError,
     InvalidVerificationTokenError,
     TenantNotFoundError,
+    TokenExpiredError,
 )
-from app.core.security import hash_password, hash_token
-from app.modules.auth.models import EmailVerificationToken, User, UserStatus
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    hash_token,
+    make_refresh_token,
+    verify_password,
+)
+from app.modules.auth.models import EmailVerificationToken, RefreshToken, User, UserStatus
 from app.modules.auth.repository import (
     EmailVerificationTokenRepository,
+    RefreshTokenRepository,
     TenantRepository,
     UserRepository,
 )
 from app.modules.auth.schemas import (
+    LoginRequest,
+    LoginResponse,
+    RefreshRequest,
     RegisterRequest,
     ResendVerificationRequest,
+    TokenPairResponse,
     UserResponse,
     VerifyEmailRequest,
 )
@@ -42,6 +58,7 @@ class AuthService:
         self._users = UserRepository(session)
         self._tenants = TenantRepository(session)
         self._verify_tokens = EmailVerificationTokenRepository(session)
+        self._refresh_tokens = RefreshTokenRepository(session)
 
     async def register(self, data: RegisterRequest) -> UserResponse:
         if await self._users.get_by_email(data.email):
@@ -82,6 +99,79 @@ class AuthService:
         if not user or user.status != UserStatus.unverified:
             return
         await self._issue_verification_token(user.id, data.email)
+        await self._session.commit()
+
+    async def login(
+        self, data: LoginRequest, ip: str | None, user_agent: str | None
+    ) -> LoginResponse:
+        user = await self._users.get_by_email(data.email)
+        if not user or not verify_password(data.password, user.password_hash):
+            raise InvalidCredentialsError("Invalid email or password")
+
+        if user.status == UserStatus.unverified:
+            raise EmailNotVerifiedError("Please verify your email before logging in")
+        if user.status == UserStatus.suspended:
+            raise AccountSuspendedError("Your account has been suspended")
+
+        access_token = create_access_token(user.id, user.tenant_id, user.role)
+        raw, token_hash, expires_at = make_refresh_token()
+
+        await self._refresh_tokens.create(
+            RefreshToken(
+                user_id=user.id,
+                token_hash=token_hash,
+                expires_at=expires_at.replace(tzinfo=None),
+                ip=ip,
+                user_agent=user_agent,
+            )
+        )
+        await self._session.commit()
+        return LoginResponse(
+            access_token=access_token,
+            refresh_token=raw,
+            user=UserResponse.model_validate(user),
+        )
+
+    async def refresh(
+        self, data: RefreshRequest, ip: str | None, user_agent: str | None
+    ) -> TokenPairResponse:
+        stored = await self._refresh_tokens.get_by_hash(hash_token(data.refresh_token))
+
+        if not stored or stored.revoked_at is not None:
+            raise InvalidTokenError("Refresh token is invalid or has been revoked")
+        if stored.expires_at < _utcnow():
+            raise TokenExpiredError("Refresh token has expired")
+
+        user = await self._users.get_by_id(stored.user_id)
+        if user and user.status == UserStatus.suspended:
+            raise AccountSuspendedError("Your account has been suspended")
+
+        await self._refresh_tokens.revoke(stored)
+
+        access_token = create_access_token(user.id, user.tenant_id, user.role)
+        raw, token_hash, expires_at = make_refresh_token()
+
+        await self._refresh_tokens.create(
+            RefreshToken(
+                user_id=user.id,
+                token_hash=token_hash,
+                expires_at=expires_at.replace(tzinfo=None),
+                ip=ip,
+                user_agent=user_agent,
+            )
+        )
+        await self._session.commit()
+        return TokenPairResponse(access_token=access_token, refresh_token=raw)
+
+    async def logout(self, refresh_token: str, current_user_id: UUID) -> None:
+        stored = await self._refresh_tokens.get_by_hash(hash_token(refresh_token))
+        # Idempotent: already revoked / not found → 204 silently
+        if not stored or stored.revoked_at is not None:
+            return
+        # Don't leak that token belongs to another user
+        if stored.user_id != current_user_id:
+            return
+        await self._refresh_tokens.revoke(stored)
         await self._session.commit()
 
     async def _issue_verification_token(self, user_id: UUID, email: str) -> None:

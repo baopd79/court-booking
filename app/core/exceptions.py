@@ -46,3 +46,18 @@ class InvalidVerificationTokenError(AppException):
 class TenantNotFoundError(AppException):
     code = "TENANT_NOT_FOUND"
     http_status = 500
+
+
+class InvalidCredentialsError(AppException):
+    code = "INVALID_CREDENTIALS"
+    http_status = 401
+
+
+class EmailNotVerifiedError(AppException):
+    code = "EMAIL_NOT_VERIFIED"
+    http_status = 403
+
+
+class AccountSuspendedError(AppException):
+    code = "ACCOUNT_SUSPENDED"
+    http_status = 403

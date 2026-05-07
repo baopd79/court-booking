@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.modules.auth.models import EmailVerificationToken, Tenant, User
+from app.modules.auth.models import EmailVerificationToken, RefreshToken, Tenant, User
 
 
 class UserRepository:
@@ -52,6 +52,27 @@ class EmailVerificationTokenRepository:
 
     async def mark_used(self, token: EmailVerificationToken) -> None:
         token.used_at = datetime.now(UTC).replace(tzinfo=None)
+        self._session.add(token)
+        await self._session.flush()
+
+
+class RefreshTokenRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+        result = await self._session.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        )
+        return result.scalar_one_or_none()
+
+    async def create(self, token: RefreshToken) -> RefreshToken:
+        self._session.add(token)
+        await self._session.flush()
+        return token
+
+    async def revoke(self, token: RefreshToken) -> None:
+        token.revoked_at = datetime.now(UTC).replace(tzinfo=None)
         self._session.add(token)
         await self._session.flush()
 
