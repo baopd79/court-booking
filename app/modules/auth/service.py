@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     AccountSuspendedError,
+    AppException,
     EmailAlreadyExistsError,
     EmailNotVerifiedError,
     InvalidCredentialsError,
@@ -24,8 +25,16 @@ from app.core.security import (
     make_refresh_token,
     verify_password,
 )
-from app.modules.auth.models import EmailVerificationToken, RefreshToken, User, UserStatus
+from app.modules.auth.models import (
+    AuditLog,
+    AuditOutcome,
+    EmailVerificationToken,
+    RefreshToken,
+    User,
+    UserStatus,
+)
 from app.modules.auth.repository import (
+    AuditLogRepository,
     EmailVerificationTokenRepository,
     RefreshTokenRepository,
     TenantRepository,
@@ -59,6 +68,7 @@ class AuthService:
         self._tenants = TenantRepository(session)
         self._verify_tokens = EmailVerificationTokenRepository(session)
         self._refresh_tokens = RefreshTokenRepository(session)
+        self._audit = AuditLogRepository(session)
 
     async def register(self, data: RegisterRequest) -> UserResponse:
         if await self._users.get_by_email(data.email):
@@ -105,13 +115,24 @@ class AuthService:
         self, data: LoginRequest, ip: str | None, user_agent: str | None
     ) -> LoginResponse:
         user = await self._users.get_by_email(data.email)
-        if not user or not verify_password(data.password, user.password_hash):
-            raise InvalidCredentialsError("Invalid email or password")
-
-        if user.status == UserStatus.unverified:
-            raise EmailNotVerifiedError("Please verify your email before logging in")
-        if user.status == UserStatus.suspended:
-            raise AccountSuspendedError("Your account has been suspended")
+        try:
+            if not user or not verify_password(data.password, user.password_hash):
+                raise InvalidCredentialsError("Invalid email or password")
+            if user.status == UserStatus.unverified:
+                raise EmailNotVerifiedError("Please verify your email before logging in")
+            if user.status == UserStatus.suspended:
+                raise AccountSuspendedError("Your account has been suspended")
+        except AppException as exc:
+            await self._audit.create(AuditLog(
+                user_id=user.id if user else None,
+                event_type="login",
+                outcome=AuditOutcome.failed,
+                ip=ip,
+                user_agent=user_agent,
+                meta={"reason": exc.code},
+            ))
+            await self._session.commit()
+            raise
 
         access_token = create_access_token(user.id, user.tenant_id, user.role)
         raw, token_hash, expires_at = make_refresh_token()
@@ -125,6 +146,13 @@ class AuthService:
                 user_agent=user_agent,
             )
         )
+        await self._audit.create(AuditLog(
+            user_id=user.id,
+            event_type="login",
+            outcome=AuditOutcome.success,
+            ip=ip,
+            user_agent=user_agent,
+        ))
         await self._session.commit()
         return LoginResponse(
             access_token=access_token,

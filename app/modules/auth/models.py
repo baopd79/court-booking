@@ -4,6 +4,8 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 
@@ -47,6 +49,27 @@ class RefreshToken(SQLModel, table=True):
     revoked_at: datetime | None = Field(default=None)
     user_agent: str | None = Field(default=None)
     ip: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+
+class AuditOutcome(StrEnum):
+    success = "success"
+    failed = "failed"
+
+
+class AuditLog(SQLModel, table=True):
+    __tablename__ = "audit_logs"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID | None = Field(default=None, foreign_key="users.id")
+    event_type: str
+    ip: str | None = Field(default=None)
+    user_agent: str | None = Field(default=None)
+    outcome: AuditOutcome
+    # "metadata" is reserved in SQLAlchemy — mapped via sa_column
+    meta: dict | None = Field(
+        default=None, sa_column=sa.Column("metadata", JSONB, nullable=True)
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 

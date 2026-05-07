@@ -61,6 +61,8 @@ migration:  ## Generate new migration. Usage: make migration m="add users table"
 
 .PHONY: db-shell
 db-shell:  ## Open psql shell to dev DB
+# docker compose exec postgres bash
+#docker compose exec postgres psql -U postgres -d court_booking tương đương
 	docker exec -it court-booking-postgres psql -U postgres -d court_booking
 
 # ===== Code quality =====
