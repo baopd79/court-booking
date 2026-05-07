@@ -37,6 +37,19 @@ class EmailVerificationToken(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
+class RefreshToken(SQLModel, table=True):
+    __tablename__ = "refresh_tokens"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id")
+    token_hash: str = Field(unique=True)
+    expires_at: datetime
+    revoked_at: datetime | None = Field(default=None)
+    user_agent: str | None = Field(default=None)
+    ip: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
+
+
 class User(SQLModel, table=True):
     __tablename__ = "users"
 
