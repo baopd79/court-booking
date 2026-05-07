@@ -1,24 +1,26 @@
 """Pytest fixtures shared across all tests.
 
 Strategy:
-- DB engine: session-scoped (1 lần cho toàn bộ test run)
-- DB session: function-scoped (mỗi test 1 transaction, rollback cuối)
+- Migration: session-scoped sync fixture chạy alembic một lần
+- DB session: function-scoped async, tạo engine riêng trong function loop
+  → tránh asyncpg Future cross event-loop với pytest-asyncio 1.x
 - HTTP client: function-scoped (đảm bảo không leak state giữa test)
 """
 
 import subprocess
 import sys
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from typing import Any
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.main import app as fastapi_app
+from app.modules.auth.models import Tenant
 
 # ===== Settings override cho test =====
 
@@ -39,23 +41,14 @@ def test_settings() -> Settings:
     return get_test_settings()
 
 
-# ===== Engine: session scope =====
+# ===== Migration: session-scoped SYNC fixture =====
 
 
-@pytest_asyncio.fixture(scope="session")
-async def engine(test_settings: Settings) -> AsyncGenerator[AsyncEngine, None]:
-    """Async engine cho test DB. Apply migration qua subprocess.
-
-    Subprocess: tránh nested asyncio.run() (alembic env.py dùng asyncio.run
-    cho async migration, không gọi được từ trong event loop của pytest).
-    """
+@pytest.fixture(scope="session", autouse=True)
+def run_migrations(test_settings: Settings) -> Generator[None, None, None]:
+    """Apply migrations to test DB once per session (sync — no event loop binding)."""
     test_db_url = str(test_settings.database_url)
-
-    # Reset schema: downgrade base → upgrade head
-    env = {
-        **dict(__import__("os").environ),
-        "DATABASE_URL": test_db_url,
-    }
+    env = {**dict(__import__("os").environ), "DATABASE_URL": test_db_url}
 
     for cmd in (["downgrade", "base"], ["upgrade", "head"]):
         result = subprocess.run(
@@ -68,40 +61,51 @@ async def engine(test_settings: Settings) -> AsyncGenerator[AsyncEngine, None]:
             raise RuntimeError(
                 f"Alembic {cmd} failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
             )
-
-    eng = create_async_engine(
-        test_db_url,
-        echo=False,
-        pool_pre_ping=True,
-    )
-
-    yield eng
-
-    await eng.dispose()
+    yield
 
 
-# ===== DB session: function scope =====
+# ===== DB session: function-scoped, fresh engine per test =====
 
 
 @pytest_asyncio.fixture
-async def db_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
-    """1 session per test, wrap trong transaction, rollback cuối.
+async def db_session(test_settings: Settings) -> AsyncGenerator[AsyncSession, None]:
+    """Fresh engine per test — tránh asyncpg Future cross event-loop.
 
-    Pattern: nested transaction
-    - Outer: connection.begin()
-    - Inner: session dùng savepoint, commit chỉ commit savepoint
-    - Cuối test rollback outer → mọi thay đổi bay sạch
+    pytest-asyncio 1.x: session-scoped async fixtures dùng session loop nhưng
+    test functions dùng function loop → cross-loop error nếu dùng chung engine.
+    Giải pháp: mỗi test tạo engine + connection riêng trong function loop của nó.
+
+    Isolation: outer BEGIN + create_savepoint mode —
+    service.commit() → RELEASE SAVEPOINT (không commit thật vào DB),
+    trans.rollback() dọn sạch sau mỗi test.
     """
-    async with engine.connect() as conn:
-        trans = await conn.begin()
+    _engine = create_async_engine(str(test_settings.database_url), pool_pre_ping=True)
+    conn = await _engine.connect()
+    trans = await conn.begin()
+    session = AsyncSession(
+        bind=conn,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    try:
+        yield session
+    finally:
+        await session.close()
+        await trans.rollback()
+        await conn.close()
+        await _engine.dispose()
 
-        session = AsyncSession(bind=conn, expire_on_commit=False)
 
-        try:
-            yield session
-        finally:
-            await session.close()
-            await trans.rollback()
+# ===== Tenant seed =====
+
+
+@pytest_asyncio.fixture
+async def default_tenant(db_session: AsyncSession) -> Tenant:
+    """Seed tenant trong savepoint của test — rollback sạch sau mỗi test."""
+    tenant = Tenant(name="Default")
+    db_session.add(tenant)
+    await db_session.flush()
+    return tenant
 
 
 # ===== FastAPI app + client =====
@@ -109,16 +113,13 @@ async def db_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest.fixture(scope="session")
 def app() -> Any:
-    """FastAPI app instance, override DB dependency."""
+    """FastAPI app instance."""
     return fastapi_app
 
 
 @pytest_asyncio.fixture
 async def client(app: Any, db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """HTTP client với DB session đã override.
-
-    Override get_db dependency để mọi endpoint dùng session test.
-    """
+    """HTTP client với DB session đã override."""
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
