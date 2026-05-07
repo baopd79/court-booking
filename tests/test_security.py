@@ -4,7 +4,6 @@ No DB or HTTP — pure function tests, no async needed.
 Settings override via monkeypatching get_settings cache.
 """
 
-import time
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
@@ -94,7 +93,10 @@ def test_create_access_token_is_valid_jwt():
 
 
 def test_create_access_token_exp_respects_ttl():
-    with patch("app.core.security.get_settings", return_value=_fake_settings(jwt_access_ttl_minutes=30)):
+    with patch(
+        "app.core.security.get_settings",
+        return_value=_fake_settings(jwt_access_ttl_minutes=30),
+    ):
         before = datetime.now(UTC)
         token = create_access_token(USER_ID, TENANT_ID, ROLE)
         after = datetime.now(UTC)
@@ -115,12 +117,17 @@ def test_decode_access_token_round_trips():
 
 
 def test_decode_access_token_expired_raises():
-    with patch("app.core.security.get_settings", return_value=_fake_settings(jwt_access_ttl_minutes=-1)):
+    with patch(
+        "app.core.security.get_settings",
+        return_value=_fake_settings(jwt_access_ttl_minutes=-1),
+    ):
         token = create_access_token(USER_ID, TENANT_ID, ROLE)
 
-    with patch("app.core.security.get_settings", return_value=_fake_settings()):
-        with pytest.raises(TokenExpiredError):
-            decode_access_token(token)
+    with (
+        patch("app.core.security.get_settings", return_value=_fake_settings()),
+        pytest.raises(TokenExpiredError),
+    ):
+        decode_access_token(token)
 
 
 def test_decode_access_token_bad_signature_raises():
@@ -128,24 +135,33 @@ def test_decode_access_token_bad_signature_raises():
         token = create_access_token(USER_ID, TENANT_ID, ROLE)
 
     tampered = token[:-4] + "xxxx"
-    with patch("app.core.security.get_settings", return_value=_fake_settings()):
-        with pytest.raises(InvalidTokenError):
-            decode_access_token(tampered)
+    with (
+        patch("app.core.security.get_settings", return_value=_fake_settings()),
+        pytest.raises(InvalidTokenError),
+    ):
+        decode_access_token(tampered)
 
 
 def test_decode_access_token_wrong_secret_raises():
     with patch("app.core.security.get_settings", return_value=_fake_settings()):
         token = create_access_token(USER_ID, TENANT_ID, ROLE)
 
-    with patch("app.core.security.get_settings", return_value=_fake_settings(jwt_secret_key="a-completely-different-secret-key!!")):
-        with pytest.raises(InvalidTokenError):
-            decode_access_token(token)
+    with (
+        patch(
+            "app.core.security.get_settings",
+            return_value=_fake_settings(jwt_secret_key="a-completely-different-secret-key!!"),
+        ),
+        pytest.raises(InvalidTokenError),
+    ):
+        decode_access_token(token)
 
 
 def test_decode_access_token_malformed_raises():
-    with patch("app.core.security.get_settings", return_value=_fake_settings()):
-        with pytest.raises(InvalidTokenError):
-            decode_access_token("not.a.jwt")
+    with (
+        patch("app.core.security.get_settings", return_value=_fake_settings()),
+        pytest.raises(InvalidTokenError),
+    ):
+        decode_access_token("not.a.jwt")
 
 
 def test_each_token_has_unique_jti():
@@ -185,7 +201,10 @@ def test_make_refresh_token_raw_not_equal_hash():
 
 
 def test_make_refresh_token_expiry_respects_ttl():
-    with patch("app.core.security.get_settings", return_value=_fake_settings(jwt_refresh_ttl_days=7)):
+    with patch(
+        "app.core.security.get_settings",
+        return_value=_fake_settings(jwt_refresh_ttl_days=7),
+    ):
         before = datetime.now(UTC)
         _, _, expires_at = make_refresh_token()
         after = datetime.now(UTC)

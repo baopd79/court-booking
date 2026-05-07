@@ -67,9 +67,7 @@ class AuditLog(SQLModel, table=True):
     user_agent: str | None = Field(default=None)
     outcome: AuditOutcome
     # "metadata" is reserved in SQLAlchemy — mapped via sa_column
-    meta: dict | None = Field(
-        default=None, sa_column=sa.Column("metadata", JSONB, nullable=True)
-    )
+    meta: dict | None = Field(default=None, sa_column=sa.Column("metadata", JSONB, nullable=True))
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 

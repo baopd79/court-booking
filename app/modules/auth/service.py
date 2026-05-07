@@ -123,14 +123,16 @@ class AuthService:
             if user.status == UserStatus.suspended:
                 raise AccountSuspendedError("Your account has been suspended")
         except AppException as exc:
-            await self._audit.create(AuditLog(
-                user_id=user.id if user else None,
-                event_type="login",
-                outcome=AuditOutcome.failed,
-                ip=ip,
-                user_agent=user_agent,
-                meta={"reason": exc.code},
-            ))
+            await self._audit.create(
+                AuditLog(
+                    user_id=user.id if user else None,
+                    event_type="login",
+                    outcome=AuditOutcome.failed,
+                    ip=ip,
+                    user_agent=user_agent,
+                    meta={"reason": exc.code},
+                )
+            )
             await self._session.commit()
             raise
 
@@ -146,13 +148,15 @@ class AuthService:
                 user_agent=user_agent,
             )
         )
-        await self._audit.create(AuditLog(
-            user_id=user.id,
-            event_type="login",
-            outcome=AuditOutcome.success,
-            ip=ip,
-            user_agent=user_agent,
-        ))
+        await self._audit.create(
+            AuditLog(
+                user_id=user.id,
+                event_type="login",
+                outcome=AuditOutcome.success,
+                ip=ip,
+                user_agent=user_agent,
+            )
+        )
         await self._session.commit()
         return LoginResponse(
             access_token=access_token,

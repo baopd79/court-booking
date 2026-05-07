@@ -72,11 +72,15 @@ async def test_register_duplicate_email(client: AsyncClient, registered: dict) -
 
 async def test_register_invalid_password(client: AsyncClient, default_tenant: object) -> None:
     # Too short
-    r = await client.post("/auth/register", json={**_PAYLOAD, "email": "a@b.com", "password": "abc"})
+    r = await client.post(
+        "/auth/register", json={**_PAYLOAD, "email": "a@b.com", "password": "abc"}
+    )
     assert r.status_code == 422
 
     # No digit
-    r = await client.post("/auth/register", json={**_PAYLOAD, "email": "a@b.com", "password": "nodigithere"})
+    r = await client.post(
+        "/auth/register", json={**_PAYLOAD, "email": "a@b.com", "password": "nodigithere"}
+    )
     assert r.status_code == 422
 
 
@@ -87,11 +91,13 @@ async def test_verify_email_success(
     client: AsyncClient, db_session: AsyncSession, db_user: User
 ) -> None:
     raw = secrets.token_urlsafe(32)
-    db_session.add(EmailVerificationToken(
-        user_id=db_user.id,
-        token_hash=hash_token(raw),
-        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=1),
-    ))
+    db_session.add(
+        EmailVerificationToken(
+            user_id=db_user.id,
+            token_hash=hash_token(raw),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=1),
+        )
+    )
     await db_session.flush()
 
     r = await client.post("/auth/verify-email", json={"token": raw})
@@ -111,11 +117,13 @@ async def test_verify_email_expired_token(
     client: AsyncClient, db_session: AsyncSession, db_user: User
 ) -> None:
     raw = secrets.token_urlsafe(32)
-    db_session.add(EmailVerificationToken(
-        user_id=db_user.id,
-        token_hash=hash_token(raw),
-        expires_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1),
-    ))
+    db_session.add(
+        EmailVerificationToken(
+            user_id=db_user.id,
+            token_hash=hash_token(raw),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1),
+        )
+    )
     await db_session.flush()
 
     r = await client.post("/auth/verify-email", json={"token": raw})
@@ -154,7 +162,9 @@ async def test_login_writes_audit_log(
     await client.post("/auth/login", json={"email": _EMAIL, "password": _PASSWORD})
 
     result = await db_session.execute(
-        select(AuditLog).where(AuditLog.event_type == "login", AuditLog.outcome == AuditOutcome.success)
+        select(AuditLog).where(
+            AuditLog.event_type == "login", AuditLog.outcome == AuditOutcome.success
+        )
     )
     log = result.scalar_one_or_none()
     assert log is not None
@@ -167,7 +177,9 @@ async def test_login_failed_writes_audit_log(
     await client.post("/auth/login", json={"email": _EMAIL, "password": "wrongpass9"})
 
     result = await db_session.execute(
-        select(AuditLog).where(AuditLog.event_type == "login", AuditLog.outcome == AuditOutcome.failed)
+        select(AuditLog).where(
+            AuditLog.event_type == "login", AuditLog.outcome == AuditOutcome.failed
+        )
     )
     log = result.scalar_one_or_none()
     assert log is not None
