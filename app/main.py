@@ -7,6 +7,7 @@ Bootstrap order:
 4. Health check endpoints
 """
 
+import logging
 import traceback
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -98,3 +99,11 @@ async def readiness() -> dict[str, object]:
 
     all_ok = all(v == "ok" for v in checks.values())
     return {"status": "ready" if all_ok else "degraded", "checks": checks}
+
+
+logging.basicConfig(
+    level=getattr(logging, settings.log_level),
+    format="%(levelname)s %(name)s: %(message)s",
+)
+if not settings.debug:
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
