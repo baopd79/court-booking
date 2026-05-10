@@ -97,10 +97,13 @@ class AuthService:
         if not token or token.used_at is not None or token.expires_at < _utcnow():
             raise InvalidVerificationTokenError("Token is invalid or has expired")
 
-        await self._verify_tokens.mark_used(token)
         user = await self._users.get_by_id(token.user_id)
-        user.status = UserStatus.verified  # type: ignore[assignment]
-        await self._users.save(user)
+        if user is None:
+            raise InvalidVerificationTokenError("User no longer exists")
+
+        await self._verify_tokens.mark_used(token)
+        user.status = UserStatus.verified
+        await self._users.create(user)
         await self._session.commit()
 
     async def resend_verification(self, data: ResendVerificationRequest) -> None:
@@ -119,7 +122,9 @@ class AuthService:
             if not user or not verify_password(data.password, user.password_hash):
                 raise InvalidCredentialsError("Invalid email or password")
             if user.status == UserStatus.unverified:
-                raise EmailNotVerifiedError("Please verify your email before logging in")
+                raise EmailNotVerifiedError(
+                    "Please verify your email before logging in"
+                )
             if user.status == UserStatus.suspended:
                 raise AccountSuspendedError("Your account has been suspended")
         except AppException as exc:
@@ -175,7 +180,10 @@ class AuthService:
             raise TokenExpiredError("Refresh token has expired")
 
         user = await self._users.get_by_id(stored.user_id)
-        if user and user.status == UserStatus.suspended:
+        if user is None:
+            # User bị xóa sau khi token được tạo — token vô hiệu
+            raise InvalidTokenError("User associated with token no longer exists")
+        if user.status == UserStatus.suspended:
             raise AccountSuspendedError("Your account has been suspended")
 
         await self._refresh_tokens.revoke(stored)
@@ -214,5 +222,6 @@ class AuthService:
             expires_at=_utcnow() + timedelta(hours=_VERIFICATION_TTL_HOURS),
         )
         await self._verify_tokens.create(token)
-        # TODO(notification): replace with email send in Slice 8
-        logger.info("Verification token for %s: %s", email, raw)
+        # TODO(slice-8): gửi email thật thay cho log này.
+        # ⚠️ SECURITY: raw token trong log — chỉ dùng trong dev, KHÔNG deploy production!
+        logger.warning("[DEV ONLY] Verification token for %s: %s", email, raw)
