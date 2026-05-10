@@ -4,7 +4,7 @@ from datetime import datetime, time
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator
 from sqlmodel import SQLModel
 
 from app.modules.facility.models import SportType
@@ -72,7 +72,7 @@ class PricingRuleItem(SQLModel):
 
     @field_validator("end_time")
     @classmethod
-    def end_after_start(cls, v: time, info) -> time:
+    def end_after_start(cls, v: time, info: ValidationInfo) -> time:
         start = info.data.get("start_time")
         if start and v <= start:
             raise ValueError("end_time must be after start_time")
@@ -96,13 +96,19 @@ class PricingRuleResponse(SQLModel):
     price: Decimal
 
 
-# ===== Pagination (reusable) =====
+# ===== Pagination =====
 
 
-class PaginatedResponse(SQLModel):
-    """Generic paginated response wrapper."""
+class PaginatedFacilityResponse(SQLModel):
+    items: list[FacilityResponse]
+    total: int
+    page: int
+    limit: int
+    has_next: bool
 
-    items: list
+
+class PaginatedCourtResponse(SQLModel):
+    items: list[CourtResponse]
     total: int
     page: int
     limit: int

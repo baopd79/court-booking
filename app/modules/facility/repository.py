@@ -6,6 +6,7 @@ Soft-delete: query mặc định exclude deleted (deleted_at IS NULL).
 
 from uuid import UUID
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, func, select
 
@@ -44,11 +45,12 @@ class FacilityRepository:
         if not include_deleted:
             base = base.where(col(Facility.deleted_at).is_(None))
 
-        # Count
-        count_stmt = select(func.count()).select_from(base.subquery())
+        count_stmt = select(func.count(Facility.id)).where(
+            Facility.tenant_id == tenant_id,
+            *([] if include_deleted else [col(Facility.deleted_at).is_(None)]),
+        )
         total = (await self._session.execute(count_stmt)).scalar_one()
 
-        # Items
         items_stmt = base.order_by(Facility.name).offset((page - 1) * limit).limit(limit)
         result = await self._session.execute(items_stmt)
         items = list(result.scalars().all())
@@ -92,13 +94,52 @@ class CourtRepository:
         if not include_deleted:
             base = base.where(col(Court.deleted_at).is_(None))
 
-        count_stmt = select(func.count()).select_from(base.subquery())
+        count_stmt = select(func.count(Court.id)).where(
+            Court.facility_id == facility_id,
+            *([] if include_deleted else [col(Court.deleted_at).is_(None)]),
+        )
         total = (await self._session.execute(count_stmt)).scalar_one()
 
         items_stmt = base.order_by(Court.name).offset((page - 1) * limit).limit(limit)
         result = await self._session.execute(items_stmt)
         items = list(result.scalars().all())
         return items, total
+
+    async def list_by_tenant(
+        self,
+        tenant_id: UUID,
+        *,
+        facility_id: UUID | None = None,
+        page: int = 1,
+        limit: int = 20,
+        include_deleted: bool = False,
+    ) -> tuple[list[Court], int]:
+        """List courts for a tenant, optionally filtered by facility."""
+        base = (
+            select(Court)
+            .join(Facility, Court.facility_id == Facility.id)
+            .where(Facility.tenant_id == tenant_id)
+        )
+        if facility_id:
+            base = base.where(Court.facility_id == facility_id)
+        if not include_deleted:
+            base = base.where(col(Court.deleted_at).is_(None))
+
+        count_stmt = (
+            select(func.count(Court.id))
+            .select_from(Court)
+            .join(Facility, Court.facility_id == Facility.id)
+            .where(Facility.tenant_id == tenant_id)
+        )
+        if facility_id:
+            count_stmt = count_stmt.where(Court.facility_id == facility_id)
+        if not include_deleted:
+            count_stmt = count_stmt.where(col(Court.deleted_at).is_(None))
+
+        total = (await self._session.execute(count_stmt)).scalar_one()
+        items_stmt = base.order_by(Court.name).offset((page - 1) * limit).limit(limit)
+        result = await self._session.execute(items_stmt)
+        return list(result.scalars().all()), total
 
     async def save(self, court: Court) -> Court:
         self._session.add(court)
@@ -122,11 +163,11 @@ class PricingRuleRepository:
 
     async def delete_by_court(self, court_id: UUID) -> int:
         """Hard-delete all pricing rules for a court. Returns number of rows deleted."""
-        existing = await self.list_by_court(court_id)
-        for rule in existing:
-            await self._session.delete(rule)
+        result = await self._session.execute(
+            delete(PricingRule).where(PricingRule.court_id == court_id)
+        )
         await self._session.flush()
-        return len(existing)
+        return result.rowcount
 
     async def bulk_create(self, rules: list[PricingRule]) -> list[PricingRule]:
         """Insert multiple pricing rules in a single flush."""
