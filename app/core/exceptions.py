@@ -61,3 +61,21 @@ class EmailNotVerifiedError(AppException):
 class AccountSuspendedError(AppException):
     code = "ACCOUNT_SUSPENDED"
     http_status = 403
+
+
+# ===== Facility =====
+
+
+class FacilityNotFoundError(AppException):
+    code = "FACILITY_NOT_FOUND"
+    http_status = 404
+
+
+class CourtNotFoundError(AppException):
+    code = "COURT_NOT_FOUND"
+    http_status = 404
+
+
+class ForbiddenError(AppException):
+    code = "FORBIDDEN"
+    http_status = 403
