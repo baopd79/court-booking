@@ -79,3 +79,8 @@ class CourtNotFoundError(AppException):
 class ForbiddenError(AppException):
     code = "FORBIDDEN"
     http_status = 403
+
+
+class DuplicateNameError(AppException):
+    code = "DUPLICATE_NAME"
+    http_status = 409

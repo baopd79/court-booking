@@ -5,7 +5,12 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CourtNotFoundError, FacilityNotFoundError, ForbiddenError
+from app.core.exceptions import (
+    CourtNotFoundError,
+    DuplicateNameError,
+    FacilityNotFoundError,
+    ForbiddenError,
+)
 from app.modules.auth.models import User
 from app.modules.facility.models import Court, Facility, PricingRule
 from app.modules.facility.repository import (
@@ -37,6 +42,8 @@ class FacilityService:
         self._repo = FacilityRepository(session)
 
     async def create(self, data: FacilityCreate, owner: User) -> FacilityResponse:
+        if await self._repo.get_by_name(data.name, owner.tenant_id):
+            raise DuplicateNameError("A facility with this name already exists")
         facility = Facility(
             tenant_id=owner.tenant_id,
             name=data.name,
@@ -67,6 +74,12 @@ class FacilityService:
         self, facility_id: UUID, data: FacilityUpdate, owner: User
     ) -> FacilityResponse:
         facility = await self._get_owned(facility_id, owner)
+        if (
+            data.name
+            and data.name != facility.name
+            and await self._repo.get_by_name(data.name, owner.tenant_id, exclude_id=facility_id)
+        ):
+            raise DuplicateNameError("A facility with this name already exists")
         for key, val in data.model_dump(exclude_unset=True).items():
             setattr(facility, key, val)
         facility = await self._repo.save(facility)
@@ -100,6 +113,8 @@ class CourtService:
             raise FacilityNotFoundError("Facility not found")
         if facility.tenant_id != owner.tenant_id:
             raise ForbiddenError()
+        if await self._repo.get_by_name(data.name, data.facility_id):
+            raise DuplicateNameError("A court with this name already exists in this facility")
 
         court = Court(
             facility_id=data.facility_id,
@@ -136,6 +151,12 @@ class CourtService:
         self, court_id: UUID, data: CourtUpdate, owner: User
     ) -> CourtResponse:
         court = await self._get_owned(court_id, owner)
+        if (
+            data.name
+            and data.name != court.name
+            and await self._repo.get_by_name(data.name, court.facility_id, exclude_id=court_id)
+        ):
+            raise DuplicateNameError("A court with this name already exists in this facility")
         for key, val in data.model_dump(exclude_unset=True).items():
             setattr(court, key, val)
         court = await self._repo.save(court)

@@ -56,6 +56,20 @@ class FacilityRepository:
         items = list(result.scalars().all())
         return items, total
 
+    async def get_by_name(
+        self, name: str, tenant_id: UUID, *, exclude_id: UUID | None = None
+    ) -> Facility | None:
+        """Check name uniqueness within tenant (exclude self for update check)."""
+        stmt = select(Facility).where(
+            Facility.tenant_id == tenant_id,
+            Facility.name == name,
+            col(Facility.deleted_at).is_(None),
+        )
+        if exclude_id:
+            stmt = stmt.where(Facility.id != exclude_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def save(self, facility: Facility) -> Facility:
         """Persist changes to an already-tracked facility (update / soft-delete)."""
         self._session.add(facility)
@@ -140,6 +154,20 @@ class CourtRepository:
         items_stmt = base.order_by(Court.name).offset((page - 1) * limit).limit(limit)
         result = await self._session.execute(items_stmt)
         return list(result.scalars().all()), total
+
+    async def get_by_name(
+        self, name: str, facility_id: UUID, *, exclude_id: UUID | None = None
+    ) -> Court | None:
+        """Check name uniqueness within facility (exclude self for update check)."""
+        stmt = select(Court).where(
+            Court.facility_id == facility_id,
+            Court.name == name,
+            col(Court.deleted_at).is_(None),
+        )
+        if exclude_id:
+            stmt = stmt.where(Court.id != exclude_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def save(self, court: Court) -> Court:
         self._session.add(court)

@@ -17,6 +17,9 @@ class SportType(StrEnum):
 
 class Facility(SQLModel, table=True):
     __tablename__ = "facilities"
+    __table_args__ = (
+        sa.UniqueConstraint("tenant_id", "name", name="uq_facility_tenant_name"),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     tenant_id: uuid.UUID = Field(foreign_key="tenants.id")
@@ -27,7 +30,10 @@ class Facility(SQLModel, table=True):
 
 class Court(SQLModel, table=True):
     __tablename__ = "courts"
-    __table_args__ = (sa.CheckConstraint("default_price > 0", name="chk_court_default_price"),)
+    __table_args__ = (
+        sa.CheckConstraint("default_price > 0", name="chk_court_default_price"),
+        sa.UniqueConstraint("facility_id", "name", name="uq_court_facility_name"),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     facility_id: uuid.UUID = Field(foreign_key="facilities.id")
