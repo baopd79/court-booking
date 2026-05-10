@@ -21,6 +21,7 @@ from app.core.database import get_engine
 from app.core.exceptions import AppException
 from app.core.redis import close_redis, redis_client
 from app.modules.auth.routes import router as auth_router
+from app.modules.facility.routes import router as facility_router
 
 settings = get_settings()
 
@@ -64,6 +65,7 @@ async def app_exception_handler(_request: Request, exc: AppException) -> JSONRes
 # ===== Routers =====
 
 app.include_router(auth_router)
+app.include_router(facility_router)
 
 
 # ===== Health checks =====
