@@ -21,32 +21,32 @@
 
 ### 1.1. Tech stack
 
-| Layer | Technology |
-|---|---|
-| Backend framework | FastAPI |
-| ORM | SQLModel (SQLAlchemy 2.x underneath) |
-| Database | PostgreSQL 15+ |
-| Migration | Alembic |
-| Cache / Queue / Lock | Redis |
-| Auth | JWT (access 15ph + refresh 7 ngày) + RBAC |
-| Payment | VNPay sandbox |
-| Email | SMTP (Gmail/Mailtrap dev) |
-| Container | Docker + Docker Compose |
-| Test | pytest + pytest-asyncio |
-| CI | GitHub Actions |
+| Layer                | Technology                                |
+| -------------------- | ----------------------------------------- |
+| Backend framework    | FastAPI                                   |
+| ORM                  | SQLModel (SQLAlchemy 2.x underneath)      |
+| Database             | PostgreSQL 15+                            |
+| Migration            | Alembic                                   |
+| Cache / Queue / Lock | Redis                                     |
+| Auth                 | JWT (access 15ph + refresh 7 ngày) + RBAC |
+| Payment              | VNPay sandbox                             |
+| Email                | SMTP (Gmail/Mailtrap dev)                 |
+| Container            | Docker + Docker Compose                   |
+| Test                 | pytest + pytest-asyncio                   |
+| CI                   | GitHub Actions                            |
 
 ### 1.2. Bounded contexts
 
 Hệ thống chia thành **6 modules**:
 
-| Module | Trách nhiệm |
-|---|---|
-| `auth` | User register/login, JWT, email verification, refresh token |
-| `facility` | Facility, Court, Pricing rules, Slot management |
-| `booking` | Booking lifecycle (core), slot reservation với concurrency control |
-| `payment` | VNPay integration, payment callback, refund |
-| `notification` | Email + in-app notification, retry queue |
-| `report` | Revenue reporting |
+| Module         | Trách nhiệm                                                        |
+| -------------- | ------------------------------------------------------------------ |
+| `auth`         | User register/login, JWT, email verification, refresh token        |
+| `facility`     | Facility, Court, Pricing rules, Slot management                    |
+| `booking`      | Booking lifecycle (core), slot reservation với concurrency control |
+| `payment`      | VNPay integration, payment callback, refund                        |
+| `notification` | Email + in-app notification, retry queue                           |
+| `report`       | Revenue reporting                                                  |
 
 ---
 
@@ -54,137 +54,147 @@ Hệ thống chia thành **6 modules**:
 
 ### 2.1. Tổng quan các bảng (15 bảng)
 
-| Nhóm | Bảng |
-|---|---|
-| Tenant & Auth | `tenants`, `users`, `email_verification_tokens`, `refresh_tokens`, `audit_logs` |
-| Inventory | `facilities`, `courts`, `pricing_rules` |
-| Booking core | `slots`, `bookings`, `booking_slots` |
-| Payment | `payments`, `refunds` |
-| Notification | `notifications` |
-| Infrastructure | `idempotency_keys` |
+| Nhóm           | Bảng                                                                            |
+| -------------- | ------------------------------------------------------------------------------- |
+| Tenant & Auth  | `tenants`, `users`, `email_verification_tokens`, `refresh_tokens`, `audit_logs` |
+| Inventory      | `facilities`, `courts`, `pricing_rules`                                         |
+| Booking core   | `slots`, `bookings`, `booking_slots`                                            |
+| Payment        | `payments`, `refunds`                                                           |
+| Notification   | `notifications`                                                                 |
+| Infrastructure | `idempotency_keys`                                                              |
 
 ### 2.2. Schema chi tiết
 
 #### 2.2.1. `tenants`
+
 Multi-tenant ready, MVP seed 1 row.
 
-| Column | Type | Constraint | Note |
-|---|---|---|---|
-| id | UUID | PK | |
-| name | string | NOT NULL | |
-| created_at | timestamp | NOT NULL | |
+| Column     | Type      | Constraint | Note |
+| ---------- | --------- | ---------- | ---- |
+| id         | UUID      | PK         |      |
+| name       | string    | NOT NULL   |      |
+| created_at | timestamp | NOT NULL   |      |
 
 #### 2.2.2. `users`
+
 Gộp customer + owner, phân biệt qua `role`.
 
-| Column | Type | Constraint | Note |
-|---|---|---|---|
-| id | UUID | PK | |
-| tenant_id | UUID | FK → tenants | |
-| email | string | UNIQUE, NOT NULL | |
-| password_hash | string | NOT NULL | bcrypt |
-| role | enum | NOT NULL | `customer` \| `owner` |
-| status | enum | NOT NULL | `unverified` \| `verified` \| `suspended` |
-| full_name | string | | |
-| phone | string | | |
-| created_at | timestamp | NOT NULL | |
+| Column        | Type      | Constraint       | Note                                      |
+| ------------- | --------- | ---------------- | ----------------------------------------- |
+| id            | UUID      | PK               |                                           |
+| tenant_id     | UUID      | FK → tenants     |                                           |
+| email         | string    | UNIQUE, NOT NULL |                                           |
+| password_hash | string    | NOT NULL         | bcrypt                                    |
+| role          | enum      | NOT NULL         | `customer` \| `owner`                     |
+| status        | enum      | NOT NULL         | `unverified` \| `verified` \| `suspended` |
+| full_name     | string    |                  |                                           |
+| phone         | string    |                  |                                           |
+| created_at    | timestamp | NOT NULL         |                                           |
 
 **Index:** `email` (UNIQUE).
 
 #### 2.2.3. `email_verification_tokens`
+
 Token verify email, hash trước khi lưu.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| user_id | UUID | FK → users |
-| token_hash | string | UNIQUE, NOT NULL |
+| Column     | Type      | Constraint         |
+| ---------- | --------- | ------------------ |
+| id         | UUID      | PK                 |
+| user_id    | UUID      | FK → users         |
+| token_hash | string    | UNIQUE, NOT NULL   |
 | expires_at | timestamp | NOT NULL (24h TTL) |
-| used_at | timestamp | NULLABLE |
-| created_at | timestamp | NOT NULL |
+| used_at    | timestamp | NULLABLE           |
+| created_at | timestamp | NOT NULL           |
 
 #### 2.2.4. `refresh_tokens`
+
 JWT refresh token, có thể revoke.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| user_id | UUID | FK → users |
-| token_hash | string | UNIQUE, NOT NULL |
+| Column     | Type      | Constraint            |
+| ---------- | --------- | --------------------- |
+| id         | UUID      | PK                    |
+| user_id    | UUID      | FK → users            |
+| token_hash | string    | UNIQUE, NOT NULL      |
 | expires_at | timestamp | NOT NULL (7 ngày TTL) |
-| revoked_at | timestamp | NULLABLE |
-| user_agent | string | |
-| ip | string | |
-| created_at | timestamp | NOT NULL |
+| revoked_at | timestamp | NULLABLE              |
+| user_agent | string    |                       |
+| ip         | string    |                       |
+| created_at | timestamp | NOT NULL              |
 
 #### 2.2.5. `audit_logs`
+
 Log auth events (login success/fail, sensitive actions).
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| user_id | UUID | FK → users, NULLABLE |
-| event_type | string | NOT NULL |
-| ip | string | |
-| user_agent | string | |
-| outcome | enum | `success` \| `failed` |
-| metadata | jsonb | |
-| created_at | timestamp | NOT NULL |
+| Column     | Type      | Constraint            |
+| ---------- | --------- | --------------------- |
+| id         | UUID      | PK                    |
+| user_id    | UUID      | FK → users, NULLABLE  |
+| event_type | string    | NOT NULL              |
+| ip         | string    |                       |
+| user_agent | string    |                       |
+| outcome    | enum      | `success` \| `failed` |
+| metadata   | jsonb     |                       |
+| created_at | timestamp | NOT NULL              |
 
 `user_id` nullable vì login fail có thể chưa biết user.
 
 #### 2.2.6. `facilities`
+
 Soft delete để giữ booking history.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| tenant_id | UUID | FK → tenants |
-| name | string | NOT NULL |
-| address | string | |
+| Column     | Type      | Constraint             |
+| ---------- | --------- | ---------------------- |
+| id         | UUID      | PK                     |
+| tenant_id  | UUID      | FK → tenants           |
+| name       | string    | NOT NULL               |
+| address    | string    |                        |
 | deleted_at | timestamp | NULLABLE (soft delete) |
 
 #### 2.2.7. `courts`
+
 Soft delete như facility.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| facility_id | UUID | FK → facilities |
-| name | string | NOT NULL |
-| sport_type | enum | `pickleball` \| `badminton` \| `tennis` |
-| default_price | decimal | NOT NULL, CHECK > 0 |
-| deleted_at | timestamp | NULLABLE |
+| Column        | Type      | Constraint                              |
+| ------------- | --------- | --------------------------------------- |
+| id            | UUID      | PK                                      |
+| facility_id   | UUID      | FK → facilities                         |
+| name          | string    | NOT NULL                                |
+| sport_type    | enum      | `pickleball` \| `badminton` \| `tennis` |
+| default_price | decimal   | NOT NULL, CHECK > 0                     |
+| deleted_at    | timestamp | NULLABLE                                |
 
 #### 2.2.8. `pricing_rules`
+
 Disjoint time blocks, cover toàn business hour.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| court_id | UUID | FK → courts |
-| day_of_week | smallint | 0-6 (0 = Sunday) |
-| start_time | time | NOT NULL |
-| end_time | time | NOT NULL |
-| price | decimal | NOT NULL, CHECK > 0 |
+| Column      | Type     | Constraint          |
+| ----------- | -------- | ------------------- |
+| id          | UUID     | PK                  |
+| court_id    | UUID     | FK → courts         |
+| day_of_week | smallint | 0-6 (0 = Sunday)    |
+| start_time  | time     | NOT NULL            |
+| end_time    | time     | NOT NULL            |
+| price       | decimal  | NOT NULL, CHECK > 0 |
 
 **Validation ở app layer**: no-overlap, no-gap.
 
 #### 2.2.9. `slots` ⭐ HOT TABLE
+
 Pre-generated, là nơi diễn ra concurrency. Primary key `bigint` (không UUID) cho perf + ordered locking.
 
-| Column | Type | Constraint | Note |
-|---|---|---|---|
-| id | bigint | PK | Auto-increment |
-| court_id | UUID | FK → courts | |
-| slot_start | timestamp | NOT NULL | UTC |
-| slot_end | timestamp | NOT NULL | |
-| status | enum | NOT NULL | `available` \| `held` \| `booked` \| `closed` |
-| held_until | timestamp | NULLABLE | TTL hold |
-| held_by_booking_id | UUID | FK → bookings, NULLABLE, ON DELETE SET NULL | Debug + cleanup |
-| version | integer | NOT NULL DEFAULT 0 | Optimistic lock fallback |
+| Column             | Type      | Constraint                                  | Note                                          |
+| ------------------ | --------- | ------------------------------------------- | --------------------------------------------- |
+| id                 | bigint    | PK                                          | Auto-increment                                |
+| court_id           | UUID      | FK → courts                                 |                                               |
+| slot_start         | timestamp | NOT NULL                                    | UTC                                           |
+| slot_end           | timestamp | NOT NULL                                    |                                               |
+| status             | enum      | NOT NULL                                    | `available` \| `held` \| `booked` \| `closed` |
+| held_until         | timestamp | NULLABLE                                    | TTL hold                                      |
+| held_by_booking_id | UUID      | FK → bookings, NULLABLE, ON DELETE SET NULL | Debug + cleanup                               |
+| version            | integer   | NOT NULL DEFAULT 0                          | Optimistic lock fallback                      |
 
 **Indexes:**
+
 ```sql
 -- Unique: chống generate trùng
 CREATE UNIQUE INDEX idx_slots_court_start ON slots(court_id, slot_start);
@@ -197,36 +207,38 @@ CREATE INDEX idx_slots_held_until ON slots(held_until) WHERE status = 'held';
 ```
 
 #### 2.2.10. `bookings`
+
 Parent của booking_slots. Có CHECK constraint phân biệt online vs walk-in.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| tenant_id | UUID | FK → tenants |
-| customer_id | UUID | FK → users, NULLABLE (walk-in) |
-| court_id | UUID | FK → courts |
-| status | enum | `pending_payment` \| `payment_processing` \| `confirmed` \| `in_use` \| `completed` \| `expired` \| `payment_failed` \| `cancelled` |
-| total_amount | decimal | NOT NULL |
-| booking_type | enum | `online` \| `walkin` |
-| walkin_name | string | NULLABLE |
-| walkin_phone | string | NULLABLE |
-| hold_expires_at | timestamp | NULLABLE |
-| cancelled_by | enum | NULLABLE — `customer` \| `owner` \| `system` |
-| cancellation_reason | text | NULLABLE |
-| cancelled_at | timestamp | NULLABLE |
-| created_at | timestamp | NOT NULL |
+| Column              | Type      | Constraint                                                                                                                          |
+| ------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| id                  | UUID      | PK                                                                                                                                  |
+| tenant_id           | UUID      | FK → tenants                                                                                                                        |
+| customer_id         | UUID      | FK → users, NULLABLE (walk-in)                                                                                                      |
+| court_id            | UUID      | FK → courts                                                                                                                         |
+| status              | enum      | `pending_payment` \| `payment_processing` \| `confirmed` \| `in_use` \| `completed` \| `expired` \| `payment_failed` \| `cancelled` |
+| total_amount        | decimal   | NOT NULL                                                                                                                            |
+| booking_type        | enum      | `online` \| `walkin`                                                                                                                |
+| walkin_name         | string    | NULLABLE                                                                                                                            |
+| walkin_phone        | string    | NULLABLE                                                                                                                            |
+| hold_expires_at     | timestamp | NULLABLE                                                                                                                            |
+| cancelled_by        | enum      | NULLABLE — `customer` \| `owner` \| `system`                                                                                        |
+| cancellation_reason | text      | NULLABLE                                                                                                                            |
+| cancelled_at        | timestamp | NULLABLE                                                                                                                            |
+| created_at          | timestamp | NOT NULL                                                                                                                            |
 
 **CHECK constraint** (online vs walk-in — exhaustive cả 2 chiều):
+
 ```sql
 ALTER TABLE bookings ADD CONSTRAINT chk_booking_owner CHECK (
-  (booking_type = 'online' 
-    AND customer_id IS NOT NULL 
-    AND walkin_name IS NULL 
-    AND walkin_phone IS NULL) 
+  (booking_type = 'online'
+    AND customer_id IS NOT NULL
+    AND walkin_name IS NULL
+    AND walkin_phone IS NULL)
   OR
-  (booking_type = 'walkin' 
-    AND customer_id IS NULL 
-    AND walkin_name IS NOT NULL 
+  (booking_type = 'walkin'
+    AND customer_id IS NULL
+    AND walkin_name IS NOT NULL
     AND walkin_phone IS NOT NULL)
 );
 
@@ -235,38 +247,40 @@ ALTER TABLE bookings ADD CONSTRAINT chk_booking_amount CHECK (total_amount > 0);
 ```
 
 #### 2.2.11. `booking_slots`
+
 Junction table booking ↔ slots. Lưu giá lúc đặt cho audit.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| booking_id | UUID | FK → bookings |
-| slot_id | bigint | FK → slots |
+| Column           | Type    | Constraint          |
+| ---------------- | ------- | ------------------- |
+| id               | UUID    | PK                  |
+| booking_id       | UUID    | FK → bookings       |
+| slot_id          | bigint  | FK → slots          |
 | price_at_booking | decimal | NOT NULL, CHECK > 0 |
 
 #### 2.2.12. `payments`
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| booking_id | UUID | FK → bookings |
-| method | enum | `vnpay` \| `offline_cash` |
-| amount | decimal | NOT NULL |
-| status | enum | `pending` \| `success` \| `failed` |
-| vnpay_txn_ref | string | UNIQUE NULLABLE — idempotency key |
-| vnpay_response_code | string | NULLABLE |
-| vnpay_payment_url | text | NULLABLE — cho idempotent initiate |
-| url_expires_at | timestamp | NULLABLE — VNPay URL TTL ~15ph |
-| paid_at | timestamp | NULLABLE |
+| Column              | Type      | Constraint                         |
+| ------------------- | --------- | ---------------------------------- |
+| id                  | UUID      | PK                                 |
+| booking_id          | UUID      | FK → bookings                      |
+| method              | enum      | `vnpay` \| `offline_cash`          |
+| amount              | decimal   | NOT NULL                           |
+| status              | enum      | `pending` \| `success` \| `failed` |
+| vnpay_txn_ref       | string    | UNIQUE NULLABLE — idempotency key  |
+| vnpay_response_code | string    | NULLABLE                           |
+| vnpay_payment_url   | text      | NULLABLE — cho idempotent initiate |
+| url_expires_at      | timestamp | NULLABLE — VNPay URL TTL ~15ph     |
+| paid_at             | timestamp | NULLABLE                           |
 
 **Idempotency**: `vnpay_txn_ref UNIQUE` → webhook trùng → DB conflict → đã xử lý.
 
 **Constraints bổ sung:**
+
 ```sql
 -- Defense-in-depth: 1 booking chỉ có DUY NHẤT 1 payment success
 -- (cho phép nhiều pending/failed nếu retry)
-CREATE UNIQUE INDEX idx_payments_booking_success 
-  ON payments(booking_id) 
+CREATE UNIQUE INDEX idx_payments_booking_success
+  ON payments(booking_id)
   WHERE status = 'success';
 
 -- Amount phải dương
@@ -274,16 +288,17 @@ ALTER TABLE payments ADD CONSTRAINT chk_payment_amount CHECK (amount > 0);
 ```
 
 #### 2.2.13. `refunds`
+
 Tách bảng để hỗ trợ partial refund tương lai.
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| payment_id | UUID | FK → payments |
-| amount | decimal | NOT NULL, CHECK > 0 |
-| status | enum | `pending` \| `success` \| `failed` |
-| reason | string | |
-| refunded_at | timestamp | NULLABLE |
+| Column      | Type      | Constraint                         |
+| ----------- | --------- | ---------------------------------- |
+| id          | UUID      | PK                                 |
+| payment_id  | UUID      | FK → payments                      |
+| amount      | decimal   | NOT NULL, CHECK > 0                |
+| status      | enum      | `pending` \| `success` \| `failed` |
+| reason      | string    |                                    |
+| refunded_at | timestamp | NULLABLE                           |
 
 ```sql
 ALTER TABLE refunds ADD CONSTRAINT chk_refund_amount CHECK (amount > 0);
@@ -291,40 +306,43 @@ ALTER TABLE refunds ADD CONSTRAINT chk_refund_amount CHECK (amount > 0);
 
 #### 2.2.14. `notifications`
 
-| Column | Type | Constraint |
-|---|---|---|
-| id | UUID | PK |
-| user_id | UUID | FK → users |
-| booking_id | UUID | FK → bookings, NULLABLE |
-| channel | enum | `email` \| `in_app` |
-| event_type | string | NOT NULL — `booking_confirmed`, `booking_cancelled`, etc. |
-| status | enum | `pending` \| `sent` \| `failed` |
-| payload | jsonb | Snapshot data tại thời điểm trigger |
-| retry_count | integer | DEFAULT 0 |
-| sent_at | timestamp | NULLABLE |
+| Column      | Type      | Constraint                                                |
+| ----------- | --------- | --------------------------------------------------------- |
+| id          | UUID      | PK                                                        |
+| user_id     | UUID      | FK → users                                                |
+| booking_id  | UUID      | FK → bookings, NULLABLE                                   |
+| channel     | enum      | `email` \| `in_app`                                       |
+| event_type  | string    | NOT NULL — `booking_confirmed`, `booking_cancelled`, etc. |
+| status      | enum      | `pending` \| `sent` \| `failed`                           |
+| payload     | jsonb     | Snapshot data tại thời điểm trigger                       |
+| retry_count | integer   | DEFAULT 0                                                 |
+| sent_at     | timestamp | NULLABLE                                                  |
 
 #### 2.2.15. `idempotency_keys`
+
 Chống duplicate request từ client (double-click, network retry). Áp dụng cho mutation endpoint critical.
 
-| Column | Type | Constraint | Note |
-|---|---|---|---|
-| key | varchar(64) | NOT NULL | UUID do client tự generate |
-| user_id | UUID | NOT NULL, FK → users | Scope per user |
-| endpoint | varchar(100) | NOT NULL | VD: `POST /bookings` |
-| request_hash | varchar(64) | | SHA256 của body — detect tampering |
-| response_status | integer | | HTTP status đã trả |
-| response_body | jsonb | | Response cũ để replay |
-| created_at | timestamp | NOT NULL | |
-| expires_at | timestamp | NOT NULL | TTL 24h |
+| Column          | Type         | Constraint           | Note                               |
+| --------------- | ------------ | -------------------- | ---------------------------------- |
+| key             | varchar(64)  | NOT NULL             | UUID do client tự generate         |
+| user_id         | UUID         | NOT NULL, FK → users | Scope per user                     |
+| endpoint        | varchar(100) | NOT NULL             | VD: `POST /bookings`               |
+| request_hash    | varchar(64)  |                      | SHA256 của body — detect tampering |
+| response_status | integer      |                      | HTTP status đã trả                 |
+| response_body   | jsonb        |                      | Response cũ để replay              |
+| created_at      | timestamp    | NOT NULL             |                                    |
+| expires_at      | timestamp    | NOT NULL             | TTL 24h                            |
 
 **Primary key composite:** `(key, user_id)` — cùng key của 2 user khác nhau là độc lập.
 
 **Indexes:**
+
 ```sql
 CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
 ```
 
 **Áp dụng cho endpoints:**
+
 - `POST /bookings` (chống tạo 2 booking cùng ý định)
 - `POST /payments/initiate` (chống tạo 2 VNPay URL — cộng với row lock)
 - `POST /bookings/{id}/cancel` (chống cancel 2 lần → refund 2 lần)
@@ -342,7 +360,7 @@ tenants ──┬─< users ──< bookings ──< booking_slots >── slots
           └─< facilities ──< courts ─────┤
                               │          │
                               └──< pricing_rules
-                              
+
 bookings ─< payments ─< refunds
 users ─< notifications >─ bookings
 users ─< email_verification_tokens
@@ -363,16 +381,16 @@ Trade-off: query tenant-scoped phải JOIN nhưng tránh redundant data.
 
 ### 3.1. Booking lifecycle (8 states)
 
-| State | Ý nghĩa | Terminal? |
-|---|---|---|
-| `pending_payment` | Đã hold slot, chờ payment | ✗ |
-| `payment_processing` | Đã initiate VNPay, chờ callback | ✗ |
-| `confirmed` | Payment thành công, slot booked | ✗ |
-| `in_use` | Customer đã check-in | ✗ |
-| `completed` | Slot kết thúc | ✓ |
-| `expired` | Hết 10 phút chưa pay | ✓ |
-| `payment_failed` | VNPay callback fail | ✓ |
-| `cancelled` | Cancel (by customer/owner/system) | ✓ |
+| State                | Ý nghĩa                           | Terminal? |
+| -------------------- | --------------------------------- | --------- |
+| `pending_payment`    | Đã hold slot, chờ payment         | ✗         |
+| `payment_processing` | Đã initiate VNPay, chờ callback   | ✗         |
+| `confirmed`          | Payment thành công, slot booked   | ✗         |
+| `in_use`             | Customer đã check-in              | ✗         |
+| `completed`          | Slot kết thúc                     | ✓         |
+| `expired`            | Hết 10 phút chưa pay              | ✓         |
+| `payment_failed`     | VNPay callback fail               | ✓         |
+| `cancelled`          | Cancel (by customer/owner/system) | ✓         |
 
 ### 3.2. Transitions
 
@@ -397,18 +415,18 @@ START ──[reserve]──> pending_payment ──[initiate]──> payment_pro
 
 **Bảng transitions chi tiết:**
 
-| # | From | To | Trigger | Side effect |
-|---|---|---|---|---|
-| T1 | START | `pending_payment` | Customer reserve | Lock slots `FOR UPDATE` → `held` + `held_until` + create booking |
-| T2 | START | `confirmed` | Owner walk-in | Lock slots → `booked` + create booking + payment(offline) |
-| T3 | `pending_payment` | `payment_processing` | Customer initiate VNPay | Tạo VNPay URL |
-| T4 | `payment_processing` | `confirmed` | VNPay webhook success | Slot → `booked`, send notification |
-| T5 | `payment_processing` | `payment_failed` | VNPay webhook fail | Slot → `available`, notify customer |
-| T6 | `pending_payment` | `expired` | Cron job (TTL 10ph) | Slot → `available` |
-| T7 | `confirmed` | `in_use` | Owner check-in | (state only) |
-| T8 | `in_use` | `completed` | Background job (last_slot_end < now) | (state only) |
-| T9 | `pending_payment`/`confirmed` | `cancelled` | Customer/Owner cancel | Slot → `available`, tạo refund record |
-| T10 | `confirmed` | `completed` | Background job (no-show case) | (state only, không tạo refund) |
+| #   | From                          | To                   | Trigger                              | Side effect                                                      |
+| --- | ----------------------------- | -------------------- | ------------------------------------ | ---------------------------------------------------------------- |
+| T1  | START                         | `pending_payment`    | Customer reserve                     | Lock slots `FOR UPDATE` → `held` + `held_until` + create booking |
+| T2  | START                         | `confirmed`          | Owner walk-in                        | Lock slots → `booked` + create booking + payment(offline)        |
+| T3  | `pending_payment`             | `payment_processing` | Customer initiate VNPay              | Tạo VNPay URL                                                    |
+| T4  | `payment_processing`          | `confirmed`          | VNPay webhook success                | Slot → `booked`, send notification                               |
+| T5  | `payment_processing`          | `payment_failed`     | VNPay webhook fail                   | Slot → `available`, notify customer                              |
+| T6  | `pending_payment`             | `expired`            | Cron job (TTL 10ph)                  | Slot → `available`                                               |
+| T7  | `confirmed`                   | `in_use`             | Owner check-in                       | (state only)                                                     |
+| T8  | `in_use`                      | `completed`          | Background job (last_slot_end < now) | (state only)                                                     |
+| T9  | `pending_payment`/`confirmed` | `cancelled`          | Customer/Owner cancel                | Slot → `available`, tạo refund record                            |
+| T10 | `confirmed`                   | `completed`          | Background job (no-show case)        | (state only, không tạo refund)                                   |
 
 ### 3.3. Invariants (bất biến)
 
@@ -421,36 +439,39 @@ START ──[reserve]──> pending_payment ──[initiate]──> payment_pro
 ### 3.4. Edge cases
 
 #### Edge case 1: Webhook đến sau khi cron expired
+
 - Booking `pending_payment` quá 10 phút → cron set `expired`, slot → `available`
 - VNPay callback **vẫn đến** với status success
 - **Xử lý**: Webhook check current state, nếu `expired` → reject + tạo refund record + alert admin
 
 #### Edge case 2: Cancel khi đang `payment_processing`
+
 - AC 6.6 nói rõ: trả 409, customer phải đợi webhook về
 - **Lý do**: không biết payment kết quả thế nào, sợ refund nhầm
 
 #### Edge case 3: Late check-in / no-show
+
 - Booking `confirmed`, slot đã bắt đầu nhưng customer chưa đến
 - Background job: nếu `last_slot_end < now` mà vẫn `confirmed` → set `completed` (T10)
 
 ### 3.5. Slot lifecycle (4 states)
 
-| State | Trigger vào | Trigger ra |
-|---|---|---|
+| State       | Trigger vào                      | Trigger ra                               |
+| ----------- | -------------------------------- | ---------------------------------------- |
 | `available` | Default / booking cancel/expired | Customer reserve / Owner close / Walk-in |
-| `held` | Customer reserve | TTL expire / Confirm pay / Cancel |
-| `booked` | Pay success / Walk-in | Cancel / Force cancel |
-| `closed` | Owner close | Owner reopen |
+| `held`      | Customer reserve                 | TTL expire / Confirm pay / Cancel        |
+| `booked`    | Pay success / Walk-in            | Cancel / Force cancel                    |
+| `closed`    | Owner close                      | Owner reopen                             |
 
 Slot status thay đổi **luôn đi kèm với booking transition** (trừ `closed` độc lập).
 
 ### 3.6. Payment lifecycle (3 states)
 
-| State | Ý nghĩa |
-|---|---|
+| State     | Ý nghĩa                       |
+| --------- | ----------------------------- |
 | `pending` | Đã tạo VNPay URL, chờ kết quả |
-| `success` | Webhook xác nhận thành công |
-| `failed` | Webhook báo fail |
+| `success` | Webhook xác nhận thành công   |
+| `failed`  | Webhook báo fail              |
 
 Walk-in: tạo trực tiếp với status `success`, method `offline_cash`.
 
@@ -497,12 +518,13 @@ class ErrorDetail(BaseModel):
 ```
 
 Ví dụ 409:
+
 ```json
 {
   "error": {
     "code": "SLOT_NOT_AVAILABLE",
     "message": "Một số slot đã được đặt bởi khách khác",
-    "details": {"unavailable_slot_ids": [123, 124]}
+    "details": { "unavailable_slot_ids": [123, 124] }
   }
 }
 ```
@@ -528,83 +550,85 @@ JWT payload chứa: `user_id`, `tenant_id`, `role`, `exp`.
 
 #### Rate limiting (Phase HARDEN)
 
-| Endpoint | Limit |
-|---|---|
-| POST /auth/login | 5 req/phút/IP |
-| POST /bookings | 10 req/phút/customer |
-| POST /payments/initiate | 5 req/phút/customer |
+| Endpoint                | Limit                |
+| ----------------------- | -------------------- |
+| POST /auth/login        | 5 req/phút/IP        |
+| POST /bookings          | 10 req/phút/customer |
+| POST /payments/initiate | 5 req/phút/customer  |
 
 ### 4.2. Endpoints mapping (~30 endpoints)
 
 #### Module: auth
 
-| Method | Path | Story | Auth |
-|---|---|---|---|
-| POST | `/auth/register` | S1 | — |
-| POST | `/auth/verify-email` | S1 | — |
-| POST | `/auth/resend-verification` | S1 | — |
-| POST | `/auth/login` | S1, S8 | — |
-| POST | `/auth/refresh` | — | refresh JWT |
-| POST | `/auth/logout` | — | JWT |
-| GET | `/auth/me` | — | JWT |
+| Method | Path                        | Story  | Auth        |
+| ------ | --------------------------- | ------ | ----------- | ------------------------------------------------- |
+| POST   | `/auth/register`            | S1     | —           | RegisterRequest/RegisterResponse                  |
+| POST   | `/auth/verify-email`        | S1     | —           | VerifyEmailRequest                                |
+| POST   | `/auth/resend-verification` | S1     | —           | ResendVerificationRequest                         |
+| POST   | `/auth/login`               | S1, S8 | —           | LoginRequest, TokenPairResponse                   |
+| POST   | `/auth/refresh`             | —      | refresh JWT | RefreshRequest, RefreshResponse,TokenpairResponse |
+| POST   | `/auth/logout`              | —      | JWT         | LogoutRequest                                     |
+| GET    | `/auth/me`                  | —      | JWT         | UserResponse                                      |
 
 #### Module: facility (owner only)
 
-| Method | Path | Story | Auth |
-|---|---|---|---|
-| GET / POST / PATCH / DELETE | `/facilities` | S9 | owner |
-| GET / POST / PATCH / DELETE | `/courts` | S9 | owner |
-| GET | `/courts/{id}/pricing` | S10 | owner |
-| PUT | `/courts/{id}/pricing` | S10 | owner — replace toàn bộ |
-| POST | `/courts/{id}/slots/close` | S11 | owner — bulk |
-| POST | `/courts/{id}/slots/reopen` | S11 | owner — bulk |
+| Method                      | Path                        | Story | Auth                    |
+| --------------------------- | --------------------------- | ----- | ----------------------- |
+| GET / POST / PATCH / DELETE | `/facilities`               | S9    | owner                   |
+| GET / POST / PATCH / DELETE | `/courts`                   | S9    | owner                   |
+| GET                         | `/courts/{id}/pricing`      | S10   | owner                   |
+| PUT                         | `/courts/{id}/pricing`      | S10   | owner — replace toàn bộ |
+| POST                        | `/courts/{id}/slots/close`  | S11   | owner — bulk            |
+| POST                        | `/courts/{id}/slots/reopen` | S11   | owner — bulk            |
 
 #### Module: booking (core)
 
-| Method | Path | Story | Auth |
-|---|---|---|---|
-| GET | `/courts/availability` | S2 | public |
-| POST | `/bookings` | S3 | customer ⭐ |
-| POST | `/bookings/walk-in` | S13 | owner |
-| GET | `/bookings/me` | S5 | customer |
-| GET | `/bookings/{id}` | S5, S12 | customer/owner |
-| GET | `/bookings` | S12 | owner |
-| POST | `/bookings/{id}/cancel` | S6 | customer |
-| POST | `/bookings/{id}/force-cancel` | S15 | owner |
-| POST | `/bookings/{id}/check-in` | S14 | owner |
+| Method | Path                          | Story   | Auth           |
+| ------ | ----------------------------- | ------- | -------------- |
+| GET    | `/courts/availability`        | S2      | public         |
+| POST   | `/bookings`                   | S3      | customer ⭐    |
+| POST   | `/bookings/walk-in`           | S13     | owner          |
+| GET    | `/bookings/me`                | S5      | customer       |
+| GET    | `/bookings/{id}`              | S5, S12 | customer/owner |
+| GET    | `/bookings`                   | S12     | owner          |
+| POST   | `/bookings/{id}/cancel`       | S6      | customer       |
+| POST   | `/bookings/{id}/force-cancel` | S15     | owner          |
+| POST   | `/bookings/{id}/check-in`     | S14     | owner          |
 
 #### Module: payment
 
-| Method | Path | Story | Auth |
-|---|---|---|---|
-| POST | `/payments/initiate` | S4 | customer |
-| GET | `/payments/vnpay-return` | S4 | public (browser redirect) |
-| POST | `/payments/vnpay-ipn` | S4 | public + signature ⭐ |
+| Method | Path                     | Story | Auth                      |
+| ------ | ------------------------ | ----- | ------------------------- |
+| POST   | `/payments/initiate`     | S4    | customer                  |
+| GET    | `/payments/vnpay-return` | S4    | public (browser redirect) |
+| POST   | `/payments/vnpay-ipn`    | S4    | public + signature ⭐     |
 
 #### Module: notification
 
-| Method | Path | Story | Auth |
-|---|---|---|---|
-| GET | `/notifications` | S7 | JWT |
-| POST | `/notifications/{id}/read` | S7 | JWT |
+| Method | Path                       | Story | Auth |
+| ------ | -------------------------- | ----- | ---- |
+| GET    | `/notifications`           | S7    | JWT  |
+| POST   | `/notifications/{id}/read` | S7    | JWT  |
 
 #### Module: report
 
-| Method | Path | Story | Auth |
-|---|---|---|---|
-| GET | `/reports/revenue` | S16 | owner |
+| Method | Path               | Story | Auth  |
+| ------ | ------------------ | ----- | ----- |
+| GET    | `/reports/revenue` | S16   | owner |
 
 ### 4.3. Critical endpoints — Full schema
 
 #### 4.3.1. POST `/bookings` — Reserve slot ⭐ CORE
 
 **Headers:**
+
 ```
 Idempotency-Key: <uuid_v4>   # BẮT BUỘC, client tự generate
 Authorization: Bearer <token>
 ```
 
 **Request:**
+
 ```python
 class CreateBookingRequest(BaseModel):
     court_id: UUID
@@ -612,6 +636,7 @@ class CreateBookingRequest(BaseModel):
 ```
 
 **Response 201:**
+
 ```python
 class BookingResponse(BaseModel):
     id: UUID
@@ -640,6 +665,7 @@ class SlotInfo(BaseModel):
 | 429 | `TOO_MANY_PENDING` (>= 5 booking pending) |
 
 **Concurrency + idempotency pseudocode:**
+
 ```python
 async def create_booking(
     request: CreateBookingRequest,
@@ -647,7 +673,7 @@ async def create_booking(
     idempotency_key: str,
 ):
     request_hash = sha256(request.model_dump_json())
-    
+
     # ===== STEP 1: Idempotency check =====
     existing = await idempotency_repo.find(idempotency_key, customer_id)
     if existing:
@@ -656,7 +682,7 @@ async def create_booking(
             raise ConflictError('IDEMPOTENCY_KEY_REUSED_DIFFERENT_BODY')
         # Replay response cũ — KHÔNG tạo booking mới
         return existing.response_body
-    
+
     # Reserve key (INSERT, fail nếu duplicate do race)
     try:
         await idempotency_repo.reserve(
@@ -668,7 +694,7 @@ async def create_booking(
     except UniqueViolation:
         # Race với chính mình — đợi và return response cũ
         return await idempotency_repo.wait_and_get(idempotency_key, customer_id)
-    
+
     # ===== STEP 2: Reserve slots với pessimistic lock =====
     async with db.transaction():
         # Lock slots (ORDER BY id chống deadlock)
@@ -694,7 +720,7 @@ async def create_booking(
         # Create booking + update slots (atomic)
         booking = await booking_repo.create(...)
         await slot_repo.mark_held(slots, booking.id, expires_in_minutes=10)
-    
+
     # ===== STEP 3: Lưu response vào idempotency key =====
     response = BookingResponse.from_orm(booking)
     await idempotency_repo.save_response(
@@ -708,6 +734,7 @@ async def create_booking(
 #### 4.3.2. POST `/payments/initiate`
 
 **Request:**
+
 ```python
 class InitiatePaymentRequest(BaseModel):
     booking_id: UUID
@@ -715,6 +742,7 @@ class InitiatePaymentRequest(BaseModel):
 ```
 
 **Response 200:**
+
 ```python
 class InitiatePaymentResponse(BaseModel):
     payment_url: str
@@ -730,6 +758,7 @@ class InitiatePaymentResponse(BaseModel):
 | 410 | `BOOKING_EXPIRED` |
 
 **Idempotent logic** (AC 4.8 + chống race condition):
+
 ```python
 async def initiate_payment(booking_id, customer_id):
     async with db.transaction():
@@ -760,6 +789,7 @@ async def initiate_payment(booking_id, customer_id):
 ```
 
 **2 lớp bảo vệ:**
+
 1. **Row lock (`FOR UPDATE`)**: chống 2 request song song cùng pass check `pending_payment`
 2. **Idempotency-Key header** (cộng thêm): chống client double-click ở tầng cao hơn
 
@@ -770,6 +800,7 @@ async def initiate_payment(booking_id, customer_id):
 **Response:** VNPay format `{"RspCode": "00", "Message": "..."}`.
 
 **Logic:**
+
 ```python
 async def handle_vnpay_ipn(params: dict):
     # 1. Verify signature
@@ -819,6 +850,7 @@ async def handle_vnpay_ipn(params: dict):
 **Query params:** `?facility_id=<uuid>&date=2026-05-04&court_id=<uuid>` (court_id optional).
 
 **Response 200:**
+
 ```python
 class AvailabilityResponse(BaseModel):
     date: date
@@ -844,12 +876,14 @@ class SlotAvailability(BaseModel):
 #### 4.3.5. POST `/bookings/{id}/cancel`
 
 **Request:**
+
 ```python
 class CancelBookingRequest(BaseModel):
     confirm_no_refund: bool = False  # required nếu < 2h
 ```
 
 **Response 200:**
+
 ```python
 class CancelBookingResponse(BaseModel):
     booking_id: UUID
@@ -904,6 +938,7 @@ app/
 ```
 
 **Pattern: Vertical slice + layered**
+
 - **Vertical slice** (auth/, booking/) → mỗi feature self-contained
 - **Layered trong module** (routes → service → repository) → tách concern
 
@@ -913,27 +948,28 @@ app/
 
 ### 6.1. Pessimistic vs Optimistic lock → **Pessimistic**
 
-| Tiêu chí | Lý do chọn pessimistic |
-|---|---|
-| Conflict rate | Cao trên slot hot (19h cuối tuần) |
-| Multi-row atomic | Booking 1-4 slot, all-or-nothing |
-| Lock duration | Ngắn (vài chục ms), không phải giữ 10 phút |
-| Đơn giản | Ít edge case, dễ giải thích |
+| Tiêu chí         | Lý do chọn pessimistic                     |
+| ---------------- | ------------------------------------------ |
+| Conflict rate    | Cao trên slot hot (19h cuối tuần)          |
+| Multi-row atomic | Booking 1-4 slot, all-or-nothing           |
+| Lock duration    | Ngắn (vài chục ms), không phải giữ 10 phút |
+| Đơn giản         | Ít edge case, dễ giải thích                |
 
 `held_until` là **business state** (DB column), không phải DB lock — sau commit lock thả ngay.
 
 ### 6.2. Slot pre-generated vs computed-on-fly → **Pre-generated**
 
 Pre-generate 30 ngày tới, cron mỗi đêm sinh ngày thứ 31.
+
 - **Storage**: ~5000 row/10 court — nhẹ
 - **Query nhanh** + concurrency rõ ràng (lock thật trên row thật)
 
 ### 6.3. UUID vs bigint cho PK
 
-| Entity | Type | Lý do |
-|---|---|---|
-| `users`, `bookings`, `payments` | UUID | Public-facing, không lộ business info |
-| `slots`, `booking_slots` | bigint | Internal, perf tốt + ordered locking |
+| Entity                          | Type   | Lý do                                 |
+| ------------------------------- | ------ | ------------------------------------- |
+| `users`, `bookings`, `payments` | UUID   | Public-facing, không lộ business info |
+| `slots`, `booking_slots`        | bigint | Internal, perf tốt + ordered locking  |
 
 ### 6.4. Soft delete — `facilities` + `courts` only
 
@@ -949,6 +985,7 @@ MVP single-tenant nhưng schema sẵn sàng.
 ### 6.6. State machine — gộp `cancelled` + `cancelled_by_owner`
 
 1 state `cancelled` + cột phụ `cancelled_by` (`customer | owner | system`).
+
 - **Ưu**: Clean state machine, query "tất cả cancelled" dễ
 - **Nhược**: Mất tính rõ ràng "nhìn status biết ai cancel" — bù bằng `cancelled_by`
 
@@ -964,6 +1001,7 @@ Pattern industry-standard (Stripe, AWS) chống duplicate request từ client (d
 **Áp dụng**: `POST /bookings`, `POST /payments/initiate`, `POST /bookings/{id}/cancel`, `POST /bookings/walk-in`.
 
 **Cách hoạt động**:
+
 1. Client tự generate UUID v4, gửi qua header `Idempotency-Key`
 2. Server lưu `(key, user_id, request_hash, response)` vào DB
 3. Request tiếp theo cùng key → replay response cũ, không xử lý lại
@@ -984,20 +1022,20 @@ Pattern industry-standard (Stripe, AWS) chống duplicate request từ client (d
 
 Vertical slice theo thứ tự dependency:
 
-| # | Slice | Output |
-|---|---|---|
-| 1 | Setup | Docker Compose + Postgres + Redis + Alembic + base structure |
-| 2 | Auth | User register/login/JWT/refresh/email verify |
-| 3 | Facility | CRUD facility + court + pricing |
-| 4 | Slot | Pre-generate cron + search availability |
-| 5 | Booking | ⭐ Core: reserve + concurrency test |
-| 6 | Payment | VNPay integration + webhook + reconciliation |
-| 7 | Lifecycle | Cancel + refund + check-in + auto-complete |
-| 8 | Notification | Email + in-app + retry |
-| 9 | Report | Revenue |
+| #   | Slice        | Output                                                       |
+| --- | ------------ | ------------------------------------------------------------ |
+| 1   | Setup        | Docker Compose + Postgres + Redis + Alembic + base structure |
+| 2   | Auth         | User register/login/JWT/refresh/email verify                 |
+| 3   | Facility     | CRUD facility + court + pricing                              |
+| 4   | Slot         | Pre-generate cron + search availability                      |
+| 5   | Booking      | ⭐ Core: reserve + concurrency test                          |
+| 6   | Payment      | VNPay integration + webhook + reconciliation                 |
+| 7   | Lifecycle    | Cancel + refund + check-in + auto-complete                   |
+| 8   | Notification | Email + in-app + retry                                       |
+| 9   | Report       | Revenue                                                      |
 
 Mỗi slice: **Model → Migration → Repository → Service → API → Test** end-to-end.
 
 ---
 
-*Phase 2 — DESIGN complete. Ready for Phase 3 — BUILD.*
+_Phase 2 — DESIGN complete. Ready for Phase 3 — BUILD._
