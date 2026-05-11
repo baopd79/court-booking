@@ -13,6 +13,7 @@ from app.core.security import decode_access_token
 from app.modules.auth.models import User, UserRole, UserStatus
 from app.modules.auth.repository import UserRepository
 from app.modules.auth.service import AuthService
+from app.modules.booking.service import BookingService
 from app.modules.facility.service import (
     CourtService,
     FacilityService,
@@ -46,6 +47,12 @@ async def get_current_owner(user: Annotated[User, Depends(get_current_user)]) ->
     return user
 
 
+async def get_current_customer(user: Annotated[User, Depends(get_current_user)]) -> User:
+    if user.role != UserRole.customer:
+        raise ForbiddenError("Customer access required")
+    return user
+
+
 def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:
     return AuthService(session)
 
@@ -66,10 +73,16 @@ def get_slot_service(session: AsyncSession = Depends(get_db)) -> SlotService:
     return SlotService(session)
 
 
+def get_booking_service(session: AsyncSession = Depends(get_db)) -> BookingService:
+    return BookingService(session)
+
+
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 OwnerDep = Annotated[User, Depends(get_current_owner)]
+CustomerDep = Annotated[User, Depends(get_current_customer)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 FacilityServiceDep = Annotated[FacilityService, Depends(get_facility_service)]
 CourtServiceDep = Annotated[CourtService, Depends(get_court_service)]
 PricingServiceDep = Annotated[PricingRuleService, Depends(get_pricing_service)]
 SlotServiceDep = Annotated[SlotService, Depends(get_slot_service)]
+BookingServiceDep = Annotated[BookingService, Depends(get_booking_service)]

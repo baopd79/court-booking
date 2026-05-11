@@ -25,6 +25,7 @@ from app.core.exceptions import AppException
 from app.core.redis import close_redis, redis_client
 from app.jobs.generate_slots import generate_day_ahead
 from app.modules.auth.routes import router as auth_router
+from app.modules.booking.routes import router as booking_router
 from app.modules.facility.routes import router as facility_router
 from app.modules.facility.service import SlotService
 
@@ -102,16 +103,17 @@ app = FastAPI(
 
 @app.exception_handler(AppException)
 async def app_exception_handler(_request: Request, exc: AppException) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.http_status,
-        content={"error": {"code": exc.code, "message": exc.message}},
-    )
+    error: dict = {"code": exc.code, "message": exc.message}
+    if exc.details:
+        error["details"] = exc.details
+    return JSONResponse(status_code=exc.http_status, content={"error": error})
 
 
 # ===== Routers =====
 
 app.include_router(auth_router)
 app.include_router(facility_router)
+app.include_router(booking_router)
 
 
 # ===== Health checks =====

@@ -11,8 +11,9 @@ class AppException(Exception):  # noqa: N818
     code: str = "INTERNAL_ERROR"
     http_status: int = 500
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: str | None = None, details: dict | None = None) -> None:
         self.message = message or "An unexpected error occurred"
+        self.details = details
         super().__init__(self.message)
 
 
@@ -84,3 +85,42 @@ class ForbiddenError(AppException):
 class DuplicateNameError(AppException):
     code = "DUPLICATE_NAME"
     http_status = 409
+
+
+# ===== Booking =====
+
+
+class BookingNotFoundError(AppException):
+    code = "BOOKING_NOT_FOUND"
+    http_status = 404
+
+
+class SlotNotAvailableError(AppException):
+    code = "SLOT_NOT_AVAILABLE"
+    http_status = 409
+
+    def __init__(self, unavailable_slot_ids: list[int]) -> None:
+        super().__init__(
+            "Some slots are not available",
+            details={"unavailable_slot_ids": unavailable_slot_ids},
+        )
+
+
+class InvalidSlotsError(AppException):
+    code = "INVALID_SLOTS"
+    http_status = 400
+
+
+class MissingIdempotencyKeyError(AppException):
+    code = "MISSING_IDEMPOTENCY_KEY"
+    http_status = 400
+
+
+class IdempotencyKeyReusedError(AppException):
+    code = "IDEMPOTENCY_KEY_REUSED_DIFFERENT_BODY"
+    http_status = 409
+
+
+class TooManyPendingError(AppException):
+    code = "TOO_MANY_PENDING"
+    http_status = 429
