@@ -47,7 +47,9 @@ xử lý concurrency, payment integration, và state machine cho booking lifecyc
 ## 2. User Stories
 
 > 16 stories total — 7 core (concurrency-critical) + 9 CRUD.
-
+LÀ/As a<role>
+TÔI MUỐN/ I want <goal>
+VÌ THẾ/ so that <business value>
 ### Customer (8 stories)
 
 1. **Auth:** As a customer, I want to register and log in to my account, so that I can manage my bookings.
@@ -145,6 +147,7 @@ xử lý concurrency, payment integration, và state machine cho booking lifecyc
 ## 4. Acceptance Criteria
 
 > Format: Given / When / Then. Mỗi AC = ít nhất 1 test case ở Phase BUILD.
+(Given :)
 
 ### Group A — Core stories (concurrency-critical)
 

@@ -22,7 +22,7 @@ def get_engine() -> AsyncEngine:
     settings = get_settings()
     return create_async_engine(
         str(settings.database_url),
-        echo=settings.debug,
+        echo=settings.sql_echo,
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,

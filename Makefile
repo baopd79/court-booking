@@ -20,8 +20,8 @@ install-dev:  ## Install all dependencies including dev group
 
 # ===== Infrastructure =====
 .PHONY: up
-up:  ## Start infra (postgres + redis)
-	$(DOCKER_COMPOSE) up -d postgres redis
+up:  ## Start infra (postgres + redis + mailhog)
+	$(DOCKER_COMPOSE) up -d postgres redis mailhog
 	@echo "Waiting for services to be healthy..."
 	@$(DOCKER_COMPOSE) ps
 

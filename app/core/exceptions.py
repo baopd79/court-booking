@@ -11,8 +11,9 @@ class AppException(Exception):  # noqa: N818
     code: str = "INTERNAL_ERROR"
     http_status: int = 500
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: str | None = None, details: dict | None = None) -> None:
         self.message = message or "An unexpected error occurred"
+        self.details = details
         super().__init__(self.message)
 
 
@@ -61,3 +62,93 @@ class EmailNotVerifiedError(AppException):
 class AccountSuspendedError(AppException):
     code = "ACCOUNT_SUSPENDED"
     http_status = 403
+
+
+# ===== Facility =====
+
+
+class FacilityNotFoundError(AppException):
+    code = "FACILITY_NOT_FOUND"
+    http_status = 404
+
+
+class CourtNotFoundError(AppException):
+    code = "COURT_NOT_FOUND"
+    http_status = 404
+
+
+class ForbiddenError(AppException):
+    code = "FORBIDDEN"
+    http_status = 403
+
+
+class DuplicateNameError(AppException):
+    code = "DUPLICATE_NAME"
+    http_status = 409
+
+
+# ===== Booking =====
+
+
+class BookingNotFoundError(AppException):
+    code = "BOOKING_NOT_FOUND"
+    http_status = 404
+
+
+class SlotNotAvailableError(AppException):
+    code = "SLOT_NOT_AVAILABLE"
+    http_status = 409
+
+    def __init__(self, unavailable_slot_ids: list[int]) -> None:
+        super().__init__(
+            "Some slots are not available",
+            details={"unavailable_slot_ids": unavailable_slot_ids},
+        )
+
+
+class InvalidSlotsError(AppException):
+    code = "INVALID_SLOTS"
+    http_status = 400
+
+
+class MissingIdempotencyKeyError(AppException):
+    code = "MISSING_IDEMPOTENCY_KEY"
+    http_status = 400
+
+
+class IdempotencyKeyReusedError(AppException):
+    code = "IDEMPOTENCY_KEY_REUSED_DIFFERENT_BODY"
+    http_status = 409
+
+
+class TooManyPendingError(AppException):
+    code = "TOO_MANY_PENDING"
+    http_status = 429
+
+
+# ===== Payment =====
+
+
+class BookingNotCancellableError(AppException):
+    code = "BOOKING_NOT_CANCELLABLE"
+    http_status = 409
+
+
+class BookingNotCheckInableError(AppException):
+    code = "BOOKING_NOT_CHECK_INABLE"
+    http_status = 409
+
+
+class BookingNotPayableError(AppException):
+    code = "BOOKING_NOT_PAYABLE"
+    http_status = 409
+
+
+class BookingExpiredError(AppException):
+    code = "BOOKING_EXPIRED"
+    http_status = 410
+
+
+class PaymentNotFoundError(AppException):
+    code = "PAYMENT_NOT_FOUND"
+    http_status = 404

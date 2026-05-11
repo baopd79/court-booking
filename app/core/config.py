@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     app_env: Literal["dev", "test", "staging", "prod"] = "dev"
     debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    sql_echo: bool = False  # log SQL queries — tách khỏi debug để không flood terminal
 
     # ===== Database =====
     # PostgresDsn validate format: postgresql+asyncpg://user:pass@host:port/db
@@ -40,6 +41,7 @@ class Settings(BaseSettings):
     vnpay_tmn_code: str = ""
     vnpay_hash_secret: str = ""
     vnpay_url: str = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
+    vnpay_api_url: str = "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"
     vnpay_return_url: str = "http://localhost:8000/payments/vnpay-return"
 
     # ===== Email (SMTP) =====
