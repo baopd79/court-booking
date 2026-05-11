@@ -8,39 +8,85 @@ Bootstrap order:
 """
 
 import logging
-import traceback
+import logging.config
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.exceptions import AppException
 from app.core.redis import close_redis, redis_client
+from app.jobs.generate_slots import generate_day_ahead
 from app.modules.auth.routes import router as auth_router
 from app.modules.facility.routes import router as facility_router
+from app.modules.facility.service import SlotService
 
 settings = get_settings()
+
+logging.config.dictConfig({
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+            "datefmt": "%H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "default"},
+    },
+    "root": {"level": settings.log_level, "handlers": ["console"]},
+    "loggers": {
+        # Chỉ hiện WARNING+ từ các lib ồn ào — override bằng SQL_ECHO=true khi cần debug SQL
+        "sqlalchemy.engine": {"level": "DEBUG" if settings.sql_echo else "WARNING", "propagate": True},
+        "sqlalchemy.pool": {"level": "WARNING", "propagate": True},
+        "apscheduler": {"level": "WARNING", "propagate": True},
+        # uvicorn tự quản lý logger của nó với colored formatter — không override ở đây
+    },
+})
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """App lifecycle hooks.
+    """App lifecycle hooks."""
+    logger.info("Starting app in %s mode", settings.app_env)
 
-    Startup: chỉ log info — pool connection lazy (tạo khi request đầu tiên).
-    Shutdown: đóng pool DB + Redis để graceful exit.
-    """
-    # === STARTUP ===
-    print(f"🚀 Starting app in {settings.app_env} mode")
+    scheduler: AsyncIOScheduler | None = None
+
+    if settings.app_env != "test":
+        # Generate slots for next 30 days on startup (idempotent)
+        async with AsyncSession(get_engine(), expire_on_commit=False) as session:
+            try:
+                inserted = await SlotService(session).generate_upcoming(days=30)
+                await session.commit()
+                logging.getLogger(__name__).info("Startup slot generation: %d new slots", inserted)
+            except Exception:
+                await session.rollback()
+                logging.getLogger(__name__).exception("Startup slot generation failed")
+
+        # Nightly cron: generate day 31 at midnight UTC
+        scheduler = AsyncIOScheduler(timezone="UTC")
+        scheduler.add_job(generate_day_ahead, CronTrigger(hour=0, minute=0))
+        scheduler.start()
+
     yield
 
     # === SHUTDOWN ===
-    print("🛑 Shutting down")
-    await get_engine.dispose()  # close all DB connections in pool
-    await close_redis()  # close Redis pool
+    if scheduler:
+        scheduler.shutdown(wait=False)
+    logger.info("Shutting down")
+    engine = get_engine()
+    await engine.dispose()
+    await close_redis()
 
 
 app = FastAPI(
@@ -89,23 +135,17 @@ async def readiness() -> dict[str, object]:
             await conn.execute(text("SELECT 1"))
         checks["database"] = "ok"
     except Exception as e:
-        traceback.print_exc()  # ← in full traceback ra console
+        logger.exception("Database health check failed")
         checks["database"] = f"error: {type(e).__name__}: {e}"
 
     try:
         await redis_client.ping()
         checks["redis"] = "ok"
     except Exception as e:
-        traceback.print_exc()
+        logger.exception("Redis health check failed")
         checks["redis"] = f"error: {type(e).__name__}: {e}"
 
     all_ok = all(v == "ok" for v in checks.values())
     return {"status": "ready" if all_ok else "degraded", "checks": checks}
 
 
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format="%(levelname)s %(name)s: %(message)s",
-)
-if not settings.debug:
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

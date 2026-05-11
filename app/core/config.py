@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     app_env: Literal["dev", "test", "staging", "prod"] = "dev"
     debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    sql_echo: bool = False  # log SQL queries — tách khỏi debug để không flood terminal
 
     # ===== Database =====
     # PostgresDsn validate format: postgresql+asyncpg://user:pass@host:port/db
