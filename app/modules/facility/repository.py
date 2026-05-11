@@ -4,13 +4,15 @@ Pattern: mỗi repository nhận session, KHÔNG commit — service layer lo com
 Soft-delete: query mặc định exclude deleted (deleted_at IS NULL).
 """
 
+from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, func, select
 
-from app.modules.facility.models import Court, Facility, PricingRule
+from app.modules.facility.models import Court, Facility, PricingRule, Slot, SlotStatus
 
 
 class FacilityRepository:
@@ -169,6 +171,30 @@ class CourtRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def list_active_by_facility(
+        self, facility_id: UUID, *, court_id: UUID | None = None
+    ) -> list[Court]:
+        """Active (non-deleted) courts for a facility. For availability query."""
+        stmt = select(Court).where(
+            Court.facility_id == facility_id,
+            col(Court.deleted_at).is_(None),
+        )
+        if court_id:
+            stmt = stmt.where(Court.id == court_id)
+        stmt = stmt.order_by(Court.name)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_all_active(self) -> list[Court]:
+        """All non-deleted courts across all non-deleted facilities. For slot generation."""
+        stmt = (
+            select(Court)
+            .join(Facility, Court.facility_id == Facility.id)
+            .where(col(Court.deleted_at).is_(None), col(Facility.deleted_at).is_(None))
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def save(self, court: Court) -> Court:
         self._session.add(court)
         await self._session.flush()
@@ -205,3 +231,83 @@ class PricingRuleRepository:
         for rule in rules:
             await self._session.refresh(rule)
         return rules
+
+    async def list_by_courts(self, court_ids: list[UUID]) -> list[PricingRule]:
+        """All pricing rules for multiple courts. Used by slot generation."""
+        if not court_ids:
+            return []
+        stmt = (
+            select(PricingRule)
+            .where(PricingRule.court_id.in_(court_ids))  # type: ignore[union-attr]
+            .order_by(PricingRule.court_id, PricingRule.day_of_week, PricingRule.start_time)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+
+class SlotRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def bulk_insert_ignore(self, slots: list[Slot]) -> int:
+        """INSERT ... ON CONFLICT DO NOTHING. Returns rows inserted."""
+        if not slots:
+            return 0
+        values = [
+            {
+                "court_id": s.court_id,
+                "slot_start": s.slot_start,
+                "slot_end": s.slot_end,
+                "status": s.status,
+            }
+            for s in slots
+        ]
+        stmt = pg_insert(Slot).values(values).on_conflict_do_nothing(
+            index_elements=["court_id", "slot_start"]
+        )
+        result = await self._session.execute(stmt)
+        await self._session.flush()
+        return result.rowcount
+
+    async def list_by_courts_and_date(
+        self, court_ids: list[UUID], target_date: date
+    ) -> list[Slot]:
+        """All slots for a set of courts on a given date, ordered by court + start."""
+        if not court_ids:
+            return []
+        day_start = datetime(target_date.year, target_date.month, target_date.day)
+        day_end = datetime(target_date.year, target_date.month, target_date.day + 1)
+        stmt = (
+            select(Slot)
+            .where(
+                Slot.court_id.in_(court_ids),  # type: ignore[union-attr]
+                Slot.slot_start >= day_start,
+                Slot.slot_start < day_end,
+            )
+            .order_by(Slot.court_id, Slot.slot_start)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def update_status_in_range(
+        self,
+        court_id: UUID,
+        slot_start_gte: datetime,
+        slot_end_lte: datetime,
+        from_status: SlotStatus,
+        to_status: SlotStatus,
+    ) -> int:
+        """Bulk update slot status within a time range. Only updates slots in from_status."""
+        stmt = (
+            update(Slot)
+            .where(
+                Slot.court_id == court_id,
+                Slot.slot_start >= slot_start_gte,
+                Slot.slot_end <= slot_end_lte,
+                Slot.status == from_status,
+            )
+            .values(status=to_status)
+        )
+        result = await self._session.execute(stmt)
+        await self._session.flush()
+        return result.rowcount
