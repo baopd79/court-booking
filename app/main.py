@@ -34,6 +34,7 @@ from app.modules.booking.routes import router as booking_router
 from app.modules.facility.routes import router as facility_router
 from app.modules.facility.service import SlotService
 from app.modules.notification.routes import router as notification_router
+from app.modules.report.routes import router as report_router
 from app.modules.payment.routes import router as payment_router
 
 settings = get_settings()
@@ -139,6 +140,7 @@ app.include_router(facility_router)
 app.include_router(booking_router)
 app.include_router(payment_router)
 app.include_router(notification_router)
+app.include_router(report_router)
 
 
 # ===== Health checks =====

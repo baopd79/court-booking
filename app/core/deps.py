@@ -23,6 +23,7 @@ from app.modules.facility.service import (
 )
 from app.modules.notification.service import NotificationService
 from app.modules.payment.service import PaymentService
+from app.modules.report.service import ReportService
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -108,3 +109,10 @@ def get_notification_service(session: AsyncSession = Depends(get_db)) -> Notific
 
 
 NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]
+
+
+def get_report_service(session: AsyncSession = Depends(get_db)) -> ReportService:
+    return ReportService(session)
+
+
+ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
