@@ -124,3 +124,31 @@ class IdempotencyKeyReusedError(AppException):
 class TooManyPendingError(AppException):
     code = "TOO_MANY_PENDING"
     http_status = 429
+
+
+# ===== Payment =====
+
+
+class BookingNotCancellableError(AppException):
+    code = "BOOKING_NOT_CANCELLABLE"
+    http_status = 409
+
+
+class BookingNotCheckInableError(AppException):
+    code = "BOOKING_NOT_CHECK_INABLE"
+    http_status = 409
+
+
+class BookingNotPayableError(AppException):
+    code = "BOOKING_NOT_PAYABLE"
+    http_status = 409
+
+
+class BookingExpiredError(AppException):
+    code = "BOOKING_EXPIRED"
+    http_status = 410
+
+
+class PaymentNotFoundError(AppException):
+    code = "PAYMENT_NOT_FOUND"
+    http_status = 404

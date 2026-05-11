@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,35 +24,46 @@ from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.exceptions import AppException
 from app.core.redis import close_redis, redis_client
+from app.jobs.auto_complete import auto_complete
+from app.jobs.expire_holds import expire_holds
 from app.jobs.generate_slots import generate_day_ahead
+from app.jobs.notification_retry import notification_retry
+from app.jobs.reconcile_payments import reconcile_payments
 from app.modules.auth.routes import router as auth_router
 from app.modules.booking.routes import router as booking_router
 from app.modules.facility.routes import router as facility_router
 from app.modules.facility.service import SlotService
+from app.modules.notification.routes import router as notification_router
+from app.modules.payment.routes import router as payment_router
 
 settings = get_settings()
 
-logging.config.dictConfig({
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-            "datefmt": "%H:%M:%S",
+logging.config.dictConfig(
+    {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+                "datefmt": "%H:%M:%S",
+            },
         },
-    },
-    "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "default"},
-    },
-    "root": {"level": settings.log_level, "handlers": ["console"]},
-    "loggers": {
-        # Chỉ hiện WARNING+ từ các lib ồn ào — override bằng SQL_ECHO=true khi cần debug SQL
-        "sqlalchemy.engine": {"level": "DEBUG" if settings.sql_echo else "WARNING", "propagate": True},
-        "sqlalchemy.pool": {"level": "WARNING", "propagate": True},
-        "apscheduler": {"level": "WARNING", "propagate": True},
-        # uvicorn tự quản lý logger của nó với colored formatter — không override ở đây
-    },
-})
+        "handlers": {
+            "console": {"class": "logging.StreamHandler", "formatter": "default"},
+        },
+        "root": {"level": settings.log_level, "handlers": ["console"]},
+        "loggers": {
+            # Chỉ hiện WARNING+ từ các lib ồn ào — override bằng SQL_ECHO=true khi cần debug SQL
+            "sqlalchemy.engine": {
+                "level": "DEBUG" if settings.sql_echo else "WARNING",
+                "propagate": True,
+            },
+            "sqlalchemy.pool": {"level": "WARNING", "propagate": True},
+            "apscheduler": {"level": "WARNING", "propagate": True},
+            # uvicorn tự quản lý logger của nó với colored formatter — không override ở đây
+        },
+    }
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +89,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Nightly cron: generate day 31 at midnight UTC
         scheduler = AsyncIOScheduler(timezone="UTC")
         scheduler.add_job(generate_day_ahead, CronTrigger(hour=0, minute=0))
+        scheduler.add_job(reconcile_payments, CronTrigger(minute="*/10"))
+        scheduler.add_job(expire_holds, CronTrigger(minute="*/1"))
+        scheduler.add_job(auto_complete, CronTrigger(minute="*/5"))
+        scheduler.add_job(notification_retry, CronTrigger(minute="*/1"))
         scheduler.start()
 
     yield
@@ -98,6 +114,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ===== Exception handlers =====
 
 
@@ -114,6 +137,8 @@ async def app_exception_handler(_request: Request, exc: AppException) -> JSONRes
 app.include_router(auth_router)
 app.include_router(facility_router)
 app.include_router(booking_router)
+app.include_router(payment_router)
+app.include_router(notification_router)
 
 
 # ===== Health checks =====
@@ -149,5 +174,3 @@ async def readiness() -> dict[str, object]:
 
     all_ok = all(v == "ok" for v in checks.values())
     return {"status": "ready" if all_ok else "degraded", "checks": checks}
-
-

@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     vnpay_tmn_code: str = ""
     vnpay_hash_secret: str = ""
     vnpay_url: str = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
+    vnpay_api_url: str = "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"
     vnpay_return_url: str = "http://localhost:8000/payments/vnpay-return"
 
     # ===== Email (SMTP) =====

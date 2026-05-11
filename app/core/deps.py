@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.exceptions import AccountSuspendedError, ForbiddenError, InvalidTokenError
 from app.core.security import decode_access_token
+from app.core.vnpay import VNPayClient, get_vnpay_client
 from app.modules.auth.models import User, UserRole, UserStatus
 from app.modules.auth.repository import UserRepository
 from app.modules.auth.service import AuthService
@@ -20,6 +21,8 @@ from app.modules.facility.service import (
     PricingRuleService,
     SlotService,
 )
+from app.modules.notification.service import NotificationService
+from app.modules.payment.service import PaymentService
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -77,6 +80,17 @@ def get_booking_service(session: AsyncSession = Depends(get_db)) -> BookingServi
     return BookingService(session)
 
 
+def get_vnpay_client_dep() -> VNPayClient:
+    return get_vnpay_client()
+
+
+def get_payment_service(
+    session: AsyncSession = Depends(get_db),
+    vnpay_client: VNPayClient = Depends(get_vnpay_client_dep),
+) -> PaymentService:
+    return PaymentService(session, vnpay_client)
+
+
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 OwnerDep = Annotated[User, Depends(get_current_owner)]
 CustomerDep = Annotated[User, Depends(get_current_customer)]
@@ -86,3 +100,11 @@ CourtServiceDep = Annotated[CourtService, Depends(get_court_service)]
 PricingServiceDep = Annotated[PricingRuleService, Depends(get_pricing_service)]
 SlotServiceDep = Annotated[SlotService, Depends(get_slot_service)]
 BookingServiceDep = Annotated[BookingService, Depends(get_booking_service)]
+PaymentServiceDep = Annotated[PaymentService, Depends(get_payment_service)]
+
+
+def get_notification_service(session: AsyncSession = Depends(get_db)) -> NotificationService:
+    return NotificationService(session)
+
+
+NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]
