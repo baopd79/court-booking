@@ -66,6 +66,12 @@ class Slot(SQLModel, table=True):
     __tablename__ = "slots"
     __table_args__ = (
         sa.UniqueConstraint("court_id", "slot_start", name="uq_slot_court_start"),
+        # Partial index for cron cleanup of expired holds — must match migration
+        sa.Index(
+            "idx_slots_held_until",
+            "held_until",
+            postgresql_where=sa.text("status = 'held'"),
+        ),
     )
 
     id: int | None = Field(
@@ -83,10 +89,13 @@ class Slot(SQLModel, table=True):
         default=None,
         sa_column=sa.Column(sa.DateTime, nullable=True),
     )
-    # FK to bookings will be added in Slice 5 when bookings table exists
     held_by_booking_id: uuid.UUID | None = Field(
         default=None,
-        sa_column=sa.Column(sa.Uuid(), nullable=True),
+        sa_column=sa.Column(
+            sa.Uuid(),
+            sa.ForeignKey("bookings.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
     )
     version: int = Field(
         default=0,
