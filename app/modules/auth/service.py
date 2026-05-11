@@ -103,7 +103,7 @@ class AuthService:
 
         await self._verify_tokens.mark_used(token)
         user.status = UserStatus.verified
-        await self._users.create(user)
+        await self._users.save(user)
         await self._session.commit()
 
     async def resend_verification(self, data: ResendVerificationRequest) -> None:
@@ -122,23 +122,24 @@ class AuthService:
             if not user or not verify_password(data.password, user.password_hash):
                 raise InvalidCredentialsError("Invalid email or password")
             if user.status == UserStatus.unverified:
-                raise EmailNotVerifiedError(
-                    "Please verify your email before logging in"
-                )
+                raise EmailNotVerifiedError("Please verify your email before logging in")
             if user.status == UserStatus.suspended:
                 raise AccountSuspendedError("Your account has been suspended")
         except AppException as exc:
-            await self._audit.create(
-                AuditLog(
-                    user_id=user.id if user else None,
-                    event_type="login",
-                    outcome=AuditOutcome.failed,
-                    ip=ip,
-                    user_agent=user_agent,
-                    meta={"reason": exc.code},
+            try:
+                await self._audit.create(
+                    AuditLog(
+                        user_id=user.id if user else None,
+                        event_type="login",
+                        outcome=AuditOutcome.failed,
+                        ip=ip,
+                        user_agent=user_agent,
+                        meta={"reason": exc.code},
+                    )
                 )
-            )
-            await self._session.commit()
+                await self._session.commit()
+            except Exception:
+                pass  # audit failure must not mask the auth error
             raise
 
         access_token = create_access_token(user.id, user.tenant_id, user.role)

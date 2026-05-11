@@ -97,6 +97,20 @@ class CourtRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_id_for_tenant(self, court_id: UUID, tenant_id: UUID) -> Court | None:
+        """Fetch court only if it belongs to the given tenant (via facility join)."""
+        stmt = (
+            select(Court)
+            .join(Facility, Court.facility_id == Facility.id)
+            .where(
+                Court.id == court_id,
+                Facility.tenant_id == tenant_id,
+                col(Court.deleted_at).is_(None),
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_by_facility(
         self,
         facility_id: UUID,
@@ -262,16 +276,16 @@ class SlotRepository:
             }
             for s in slots
         ]
-        stmt = pg_insert(Slot).values(values).on_conflict_do_nothing(
-            index_elements=["court_id", "slot_start"]
+        stmt = (
+            pg_insert(Slot)
+            .values(values)
+            .on_conflict_do_nothing(index_elements=["court_id", "slot_start"])
         )
         result = await self._session.execute(stmt)
         await self._session.flush()
         return result.rowcount
 
-    async def list_by_courts_and_date(
-        self, court_ids: list[UUID], target_date: date
-    ) -> list[Slot]:
+    async def list_by_courts_and_date(self, court_ids: list[UUID], target_date: date) -> list[Slot]:
         """All slots for a set of courts on a given date, ordered by court + start."""
         if not court_ids:
             return []

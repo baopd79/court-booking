@@ -96,17 +96,13 @@ async def test_facility_requires_auth(client: AsyncClient) -> None:
     assert r.json()["error"]["code"] == "INVALID_TOKEN"
 
 
-async def test_facility_requires_owner_role(
-    client: AsyncClient, customer_headers: dict
-) -> None:
+async def test_facility_requires_owner_role(client: AsyncClient, customer_headers: dict) -> None:
     r = await client.get("/facilities", headers=customer_headers)
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "FORBIDDEN"
 
 
-async def test_court_requires_owner_role(
-    client: AsyncClient, customer_headers: dict
-) -> None:
+async def test_court_requires_owner_role(client: AsyncClient, customer_headers: dict) -> None:
     r = await client.get("/courts", headers=customer_headers)
     assert r.status_code == 403
 
@@ -114,7 +110,9 @@ async def test_court_requires_owner_role(
 # ===== Facility CRUD =====
 
 
-async def test_create_facility(client: AsyncClient, owner_headers: dict, default_tenant: object) -> None:
+async def test_create_facility(
+    client: AsyncClient, owner_headers: dict, default_tenant: object
+) -> None:
     r = await client.post(
         "/facilities",
         json={"name": "New Facility"},
@@ -162,7 +160,9 @@ async def test_delete_facility_soft(
     assert r.status_code == 404
 
 
-async def test_get_facility_not_found(client: AsyncClient, owner_headers: dict, default_tenant: object) -> None:
+async def test_get_facility_not_found(
+    client: AsyncClient, owner_headers: dict, default_tenant: object
+) -> None:
     r = await client.get(f"/facilities/{uuid.uuid4()}", headers=owner_headers)
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "FACILITY_NOT_FOUND"
@@ -171,9 +171,7 @@ async def test_get_facility_not_found(client: AsyncClient, owner_headers: dict, 
 # ===== Court CRUD =====
 
 
-async def test_create_court(
-    client: AsyncClient, owner_headers: dict, facility: dict
-) -> None:
+async def test_create_court(client: AsyncClient, owner_headers: dict, facility: dict) -> None:
     r = await client.post(
         "/courts",
         json={
@@ -220,9 +218,7 @@ async def test_update_court(client: AsyncClient, owner_headers: dict, court: dic
     assert body["sport_type"] == court["sport_type"]  # unchanged
 
 
-async def test_delete_court_soft(
-    client: AsyncClient, owner_headers: dict, court: dict
-) -> None:
+async def test_delete_court_soft(client: AsyncClient, owner_headers: dict, court: dict) -> None:
     r = await client.delete(f"/courts/{court['id']}", headers=owner_headers)
     assert r.status_code == 204
 
@@ -316,17 +312,22 @@ async def test_pricing_end_before_start(
 ) -> None:
     r = await client.put(
         f"/courts/{court['id']}/pricing",
-        json={"rules": [
-            {"day_of_week": 1, "start_time": "12:00:00", "end_time": "06:00:00", "price": "100000"}
-        ]},
+        json={
+            "rules": [
+                {
+                    "day_of_week": 1,
+                    "start_time": "12:00:00",
+                    "end_time": "06:00:00",
+                    "price": "100000",
+                }
+            ]
+        },
         headers=owner_headers,
     )
     assert r.status_code == 422
 
 
-async def test_pricing_empty_rules(
-    client: AsyncClient, owner_headers: dict, court: dict
-) -> None:
+async def test_pricing_empty_rules(client: AsyncClient, owner_headers: dict, court: dict) -> None:
     r = await client.put(
         f"/courts/{court['id']}/pricing",
         json={"rules": []},

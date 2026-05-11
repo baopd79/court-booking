@@ -1,7 +1,6 @@
 """Business logic for facility module."""
 
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +13,7 @@ from app.core.exceptions import (
 )
 from app.modules.auth.models import User
 from app.modules.facility.models import Court, Facility, PricingRule, Slot, SlotStatus
+from app.modules.facility.pricing import find_price as _find_price
 from app.modules.facility.repository import (
     CourtRepository,
     FacilityRepository,
@@ -45,21 +45,6 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _find_price(
-    slot: Slot, rules: list[PricingRule], default_price: Decimal
-) -> Decimal:
-    """Match a slot to its pricing rule by day_of_week + time range."""
-    slot_day = slot.slot_start.isoweekday() % 7  # 0=Sun, 1=Mon, ..., 6=Sat
-    slot_time = slot.slot_start.time()
-    for rule in rules:
-        if (
-            rule.day_of_week == slot_day
-            and rule.start_time <= slot_time < rule.end_time
-        ):
-            return rule.price
-    return default_price
-
-
 def _map_slot_status(status: SlotStatus) -> str:
     if status in (SlotStatus.held, SlotStatus.booked):
         return "unavailable"
@@ -83,12 +68,8 @@ class FacilityService:
         await self._session.commit()
         return FacilityResponse.model_validate(facility)
 
-    async def list(
-        self, owner: User, page: int = 1, limit: int = 20
-    ) -> PaginatedFacilityResponse:
-        items, total = await self._repo.list_by_tenant(
-            owner.tenant_id, page=page, limit=limit
-        )
+    async def list(self, owner: User, page: int = 1, limit: int = 20) -> PaginatedFacilityResponse:
+        items, total = await self._repo.list_by_tenant(owner.tenant_id, page=page, limit=limit)
         return PaginatedFacilityResponse(
             items=[FacilityResponse.model_validate(f) for f in items],
             total=total,
@@ -177,9 +158,7 @@ class CourtService:
     async def get(self, court_id: UUID, owner: User) -> CourtResponse:
         return CourtResponse.model_validate(await self._get_owned(court_id, owner))
 
-    async def update(
-        self, court_id: UUID, data: CourtUpdate, owner: User
-    ) -> CourtResponse:
+    async def update(self, court_id: UUID, data: CourtUpdate, owner: User) -> CourtResponse:
         court = await self._get_owned(court_id, owner)
         if (
             data.name
@@ -204,9 +183,7 @@ class CourtService:
         if not court:
             raise CourtNotFoundError("Court not found")
         # Verify ownership via facility → tenant chain
-        facility = await self._facility_repo.get_by_id(
-            court.facility_id, include_deleted=True
-        )
+        facility = await self._facility_repo.get_by_id(court.facility_id, include_deleted=True)
         if not facility or facility.tenant_id != owner.tenant_id:
             raise ForbiddenError()
         return court
@@ -219,9 +196,7 @@ class PricingRuleService:
         self._court_repo = CourtRepository(session)
         self._facility_repo = FacilityRepository(session)
 
-    async def get_by_court(
-        self, court_id: UUID, owner: User
-    ) -> list[PricingRuleResponse]:
+    async def get_by_court(self, court_id: UUID, owner: User) -> list[PricingRuleResponse]:
         await self._verify_owned(court_id, owner)
         rules = await self._repo.list_by_court(court_id)
         return [PricingRuleResponse.model_validate(r) for r in rules]
@@ -250,9 +225,7 @@ class PricingRuleService:
         court = await self._court_repo.get_by_id(court_id)
         if not court:
             raise CourtNotFoundError("Court not found")
-        facility = await self._facility_repo.get_by_id(
-            court.facility_id, include_deleted=True
-        )
+        facility = await self._facility_repo.get_by_id(court.facility_id, include_deleted=True)
         if not facility or facility.tenant_id != owner.tenant_id:
             raise ForbiddenError()
 
@@ -277,13 +250,9 @@ class SlotService:
         if not facility:
             raise FacilityNotFoundError("Facility not found")
 
-        courts = await self._court_repo.list_active_by_facility(
-            facility_id, court_id=court_id
-        )
+        courts = await self._court_repo.list_active_by_facility(facility_id, court_id=court_id)
         if not courts:
-            return AvailabilityResponse(
-                date=target_date, facility_id=facility_id, courts=[]
-            )
+            return AvailabilityResponse(date=target_date, facility_id=facility_id, courts=[])
 
         court_ids = [c.id for c in courts]
         slots = await self._slot_repo.list_by_courts_and_date(court_ids, target_date)
@@ -332,12 +301,20 @@ class SlotService:
         self, court_id: UUID, data: SlotRangeRequest, owner: User
     ) -> SlotUpdateResult:
         await self._verify_court_owned(court_id, owner)
-        slot_start = datetime(data.date.year, data.date.month, data.date.day,
-                              data.start_time.hour, data.start_time.minute)
-        slot_end = datetime(data.date.year, data.date.month, data.date.day,
-                            data.end_time.hour, data.end_time.minute)
+        slot_start = datetime(
+            data.date.year,
+            data.date.month,
+            data.date.day,
+            data.start_time.hour,
+            data.start_time.minute,
+        )
+        slot_end = datetime(
+            data.date.year, data.date.month, data.date.day, data.end_time.hour, data.end_time.minute
+        )
         updated = await self._slot_repo.update_status_in_range(
-            court_id, slot_start, slot_end,
+            court_id,
+            slot_start,
+            slot_end,
             from_status=SlotStatus.available,
             to_status=SlotStatus.closed,
         )
@@ -348,12 +325,20 @@ class SlotService:
         self, court_id: UUID, data: SlotRangeRequest, owner: User
     ) -> SlotUpdateResult:
         await self._verify_court_owned(court_id, owner)
-        slot_start = datetime(data.date.year, data.date.month, data.date.day,
-                              data.start_time.hour, data.start_time.minute)
-        slot_end = datetime(data.date.year, data.date.month, data.date.day,
-                            data.end_time.hour, data.end_time.minute)
+        slot_start = datetime(
+            data.date.year,
+            data.date.month,
+            data.date.day,
+            data.start_time.hour,
+            data.start_time.minute,
+        )
+        slot_end = datetime(
+            data.date.year, data.date.month, data.date.day, data.end_time.hour, data.end_time.minute
+        )
         updated = await self._slot_repo.update_status_in_range(
-            court_id, slot_start, slot_end,
+            court_id,
+            slot_start,
+            slot_end,
             from_status=SlotStatus.closed,
             to_status=SlotStatus.available,
         )
@@ -362,9 +347,7 @@ class SlotService:
 
     # ===== Slot generation =====
 
-    async def generate_for_court_on_date(
-        self, court_id: UUID, target_date: date
-    ) -> int:
+    async def generate_for_court_on_date(self, court_id: UUID, target_date: date) -> int:
         """Generate hourly slots for a court on a given date from its pricing rules.
 
         Idempotent: ON CONFLICT DO NOTHING on (court_id, slot_start).
@@ -412,8 +395,6 @@ class SlotService:
         court = await self._court_repo.get_by_id(court_id)
         if not court:
             raise CourtNotFoundError("Court not found")
-        facility = await self._facility_repo.get_by_id(
-            court.facility_id, include_deleted=True
-        )
+        facility = await self._facility_repo.get_by_id(court.facility_id, include_deleted=True)
         if not facility or facility.tenant_id != owner.tenant_id:
             raise ForbiddenError()

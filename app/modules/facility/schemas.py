@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 from sqlmodel import SQLModel
 
 from app.modules.facility.models import SportType
@@ -71,6 +71,13 @@ class PricingRuleItem(SQLModel):
     end_time: time
     price: Decimal = Field(gt=0)
 
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def must_be_hour_aligned(cls, v: time) -> time:
+        if v.minute != 0 or v.second != 0 or v.microsecond != 0:
+            raise ValueError("time must be on the hour (e.g. 06:00, not 06:30)")
+        return v
+
     @field_validator("end_time")
     @classmethod
     def end_after_start(cls, v: time, info: ValidationInfo) -> time:
@@ -84,6 +91,20 @@ class PricingRuleReplace(SQLModel):
     """PUT /courts/{id}/pricing — replace toàn bộ pricing rules."""
 
     rules: list[PricingRuleItem] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def no_overlapping_rules(self) -> "PricingRuleReplace":
+        by_day: dict[int, list[PricingRuleItem]] = {}
+        for rule in self.rules:
+            by_day.setdefault(rule.day_of_week, []).append(rule)
+        for day, day_rules in by_day.items():
+            sorted_rules = sorted(day_rules, key=lambda r: r.start_time)
+            for i in range(1, len(sorted_rules)):
+                if sorted_rules[i].start_time < sorted_rules[i - 1].end_time:
+                    raise ValueError(
+                        f"Pricing rules for day_of_week={day} have overlapping time ranges"
+                    )
+        return self
 
 
 class PricingRuleResponse(SQLModel):

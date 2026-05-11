@@ -17,9 +17,7 @@ class SportType(StrEnum):
 
 class Facility(SQLModel, table=True):
     __tablename__ = "facilities"
-    __table_args__ = (
-        sa.UniqueConstraint("tenant_id", "name", name="uq_facility_tenant_name"),
-    )
+    __table_args__ = (sa.UniqueConstraint("tenant_id", "name", name="uq_facility_tenant_name"),)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     tenant_id: uuid.UUID = Field(foreign_key="tenants.id")

@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import User, UserStatus
-from app.modules.facility.models import Court, Facility, PricingRule, SlotStatus
+from app.modules.facility.models import SlotStatus
 from app.modules.facility.repository import SlotRepository
 from app.modules.facility.service import SlotService
 
@@ -84,11 +84,9 @@ async def court(client: AsyncClient, owner_headers: dict, facility: dict) -> dic
 
 
 @pytest_asyncio.fixture
-async def court_with_pricing(
-    client: AsyncClient, owner_headers: dict, court: dict
-) -> dict:
+async def court_with_pricing(client: AsyncClient, owner_headers: dict, court: dict) -> dict:
     """Court with pricing rules covering tomorrow (all-day 06:00-22:00)."""
-    tomorrow_dow = (_TOMORROW.isoweekday() % 7)  # 0=Sun, 1=Mon, ..., 6=Sat
+    tomorrow_dow = _TOMORROW.isoweekday() % 7  # 0=Sun, 1=Mon, ..., 6=Sat
     rules = [
         {
             "day_of_week": tomorrow_dow,
@@ -113,9 +111,7 @@ async def court_with_pricing(
 
 
 @pytest_asyncio.fixture
-async def generated_slots(
-    db_session: AsyncSession, court_with_pricing: dict
-) -> int:
+async def generated_slots(db_session: AsyncSession, court_with_pricing: dict) -> int:
     """Generate slots for tomorrow for the test court. Returns count inserted."""
     service = SlotService(db_session)
     court_id = uuid.UUID(court_with_pricing["id"])
@@ -131,9 +127,7 @@ async def test_availability_no_auth_required(
     client: AsyncClient, facility: dict, court_with_pricing: dict, generated_slots: int
 ) -> None:
     """GET /courts/availability is public."""
-    r = await client.get(
-        f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}"
-    )
+    r = await client.get(f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}")
     assert r.status_code == 200
 
 
@@ -142,9 +136,7 @@ async def test_availability_returns_correct_slot_count(
 ) -> None:
     """2 pricing rules × 8h each ÷ 1h/slot = 16 slots."""
     assert generated_slots == 16
-    r = await client.get(
-        f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}"
-    )
+    r = await client.get(f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}")
     body = r.json()
     assert body["facility_id"] == facility["id"]
     assert len(body["courts"]) == 1
@@ -153,7 +145,10 @@ async def test_availability_returns_correct_slot_count(
 
 
 async def test_availability_status_mapping(
-    client: AsyncClient, facility: dict, court_with_pricing: dict, generated_slots: int,
+    client: AsyncClient,
+    facility: dict,
+    court_with_pricing: dict,
+    generated_slots: int,
     db_session: AsyncSession,
 ) -> None:
     """held + booked slots must appear as 'unavailable', not leak the real status."""
@@ -169,9 +164,7 @@ async def test_availability_status_mapping(
     db_session.add(all_slots[1])
     await db_session.flush()
 
-    r = await client.get(
-        f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}"
-    )
+    r = await client.get(f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}")
     slots = r.json()["courts"][0]["slots"]
     statuses = {s["id"]: s["status"] for s in slots}
     assert statuses[all_slots[0].id] == "unavailable"
@@ -184,13 +177,11 @@ async def test_availability_prices_from_rules(
     client: AsyncClient, facility: dict, court_with_pricing: dict, generated_slots: int
 ) -> None:
     """First 8 slots (06:00-14:00) priced at 100000; next 8 at 150000."""
-    r = await client.get(
-        f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}"
-    )
+    r = await client.get(f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}")
     slots = r.json()["courts"][0]["slots"]
-    assert float(slots[0]["price"]) == 100000.0   # 06:00 slot
-    assert float(slots[7]["price"]) == 100000.0   # 13:00 slot
-    assert float(slots[8]["price"]) == 150000.0   # 14:00 slot
+    assert float(slots[0]["price"]) == 100000.0  # 06:00 slot
+    assert float(slots[7]["price"]) == 100000.0  # 13:00 slot
+    assert float(slots[8]["price"]) == 150000.0  # 14:00 slot
     assert float(slots[15]["price"]) == 150000.0  # 21:00 slot
 
 
@@ -211,24 +202,18 @@ async def test_availability_no_slots_for_date(
 ) -> None:
     """Date with no generated slots → court present but empty slots list."""
     future_date = _TODAY + timedelta(days=60)
-    r = await client.get(
-        f"/courts/availability?facility_id={facility['id']}&date={future_date}"
-    )
+    r = await client.get(f"/courts/availability?facility_id={facility['id']}&date={future_date}")
     assert r.status_code == 200
     assert r.json()["courts"][0]["slots"] == []
 
 
 async def test_availability_facility_not_found(client: AsyncClient) -> None:
-    r = await client.get(
-        f"/courts/availability?facility_id={uuid.uuid4()}&date={_TOMORROW}"
-    )
+    r = await client.get(f"/courts/availability?facility_id={uuid.uuid4()}&date={_TOMORROW}")
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "FACILITY_NOT_FOUND"
 
 
-async def test_generate_idempotent(
-    db_session: AsyncSession, court_with_pricing: dict
-) -> None:
+async def test_generate_idempotent(db_session: AsyncSession, court_with_pricing: dict) -> None:
     """Running generate twice inserts 0 new slots on second run."""
     service = SlotService(db_session)
     court_id = uuid.UUID(court_with_pricing["id"])
@@ -274,8 +259,11 @@ async def test_reopen_slots(
 
 
 async def test_close_does_not_affect_booked(
-    client: AsyncClient, owner_headers: dict, court_with_pricing: dict,
-    generated_slots: int, db_session: AsyncSession
+    client: AsyncClient,
+    owner_headers: dict,
+    court_with_pricing: dict,
+    generated_slots: int,
+    db_session: AsyncSession,
 ) -> None:
     """Closing a range skips slots that are already booked."""
     court_id = uuid.UUID(court_with_pricing["id"])
@@ -307,9 +295,7 @@ async def test_close_slots_requires_owner(
     assert r.status_code == 401
 
 
-async def test_no_pricing_rules_no_slots(
-    db_session: AsyncSession, court: dict
-) -> None:
+async def test_no_pricing_rules_no_slots(db_session: AsyncSession, court: dict) -> None:
     """Court with no pricing rules generates 0 slots."""
     service = SlotService(db_session)
     court_id = uuid.UUID(court["id"])

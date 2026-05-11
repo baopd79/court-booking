@@ -107,7 +107,16 @@ async def court_with_slots(
 
     r = await client.put(
         f"/courts/{court['id']}/pricing",
-        json={"rules": [{"day_of_week": dow, "start_time": "08:00:00", "end_time": "22:00:00", "price": "100000"}]},
+        json={
+            "rules": [
+                {
+                    "day_of_week": dow,
+                    "start_time": "08:00:00",
+                    "end_time": "22:00:00",
+                    "price": "100000",
+                }
+            ]
+        },
         headers=owner_headers,
     )
     assert r.status_code == 200
@@ -119,9 +128,7 @@ async def court_with_slots(
 
 
 @pytest_asyncio.fixture
-async def available_slots(
-    db_session: AsyncSession, court_with_slots: dict
-) -> list[int]:
+async def available_slots(db_session: AsyncSession, court_with_slots: dict) -> list[int]:
     """Return first 4 consecutive available slot IDs for the court."""
     from datetime import date
 
@@ -204,8 +211,11 @@ async def test_create_booking_multi_slot(
 
 
 async def test_slots_become_held_after_booking(
-    client: AsyncClient, customer_headers: dict, court_with_slots: dict,
-    available_slots: list, db_session: AsyncSession
+    client: AsyncClient,
+    customer_headers: dict,
+    court_with_slots: dict,
+    available_slots: list,
+    db_session: AsyncSession,
 ) -> None:
     await client.post(
         "/bookings",
@@ -213,9 +223,8 @@ async def test_slots_become_held_after_booking(
         headers={**customer_headers, "Idempotency-Key": str(uuid.uuid4())},
     )
     from app.modules.facility.models import Slot
-    result = await db_session.execute(
-        select(Slot).where(Slot.id.in_(available_slots[:2]))
-    )
+
+    result = await db_session.execute(select(Slot).where(Slot.id.in_(available_slots[:2])))
     slots = result.scalars().all()
     assert all(s.status == SlotStatus.held for s in slots)
     assert all(s.held_by_booking_id is not None for s in slots)
@@ -231,8 +240,12 @@ async def test_idempotency_replay(
     key = str(uuid.uuid4())
     payload = {"court_id": court_with_slots["id"], "slot_ids": available_slots[:1]}
 
-    r1 = await client.post("/bookings", json=payload, headers={**customer_headers, "Idempotency-Key": key})
-    r2 = await client.post("/bookings", json=payload, headers={**customer_headers, "Idempotency-Key": key})
+    r1 = await client.post(
+        "/bookings", json=payload, headers={**customer_headers, "Idempotency-Key": key}
+    )
+    r2 = await client.post(
+        "/bookings", json=payload, headers={**customer_headers, "Idempotency-Key": key}
+    )
 
     assert r1.status_code == 201
     assert r2.status_code == 201
@@ -264,8 +277,11 @@ async def test_idempotency_reused_different_body(
 
 
 async def test_slot_not_available_after_booking(
-    client: AsyncClient, customer_headers: dict, customer2_headers: dict,
-    court_with_slots: dict, available_slots: list
+    client: AsyncClient,
+    customer_headers: dict,
+    customer2_headers: dict,
+    court_with_slots: dict,
+    available_slots: list,
 ) -> None:
     """Second booking for same slot → 409 SLOT_NOT_AVAILABLE."""
     # First booking
@@ -294,7 +310,10 @@ async def test_non_consecutive_slots_rejected(
     # Slots 0 and 2 are not consecutive
     r = await client.post(
         "/bookings",
-        json={"court_id": court_with_slots["id"], "slot_ids": [available_slots[0], available_slots[2]]},
+        json={
+            "court_id": court_with_slots["id"],
+            "slot_ids": [available_slots[0], available_slots[2]],
+        },
         headers={**customer_headers, "Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 400
@@ -359,8 +378,11 @@ async def test_walkin_booking(
 
 
 async def test_walkin_slots_become_booked(
-    client: AsyncClient, owner_headers: dict, court_with_slots: dict,
-    available_slots: list, db_session: AsyncSession
+    client: AsyncClient,
+    owner_headers: dict,
+    court_with_slots: dict,
+    available_slots: list,
+    db_session: AsyncSession,
 ) -> None:
     await client.post(
         "/bookings/walk-in",
@@ -373,6 +395,7 @@ async def test_walkin_slots_become_booked(
         headers={**owner_headers, "Idempotency-Key": str(uuid.uuid4())},
     )
     from app.modules.facility.models import Slot
+
     result = await db_session.execute(select(Slot).where(Slot.id == available_slots[0]))
     slot = result.scalar_one()
     assert slot.status == SlotStatus.booked
@@ -383,8 +406,12 @@ async def test_walkin_requires_owner(
 ) -> None:
     r = await client.post(
         "/bookings/walk-in",
-        json={"court_id": court_with_slots["id"], "slot_ids": available_slots[:1],
-              "walkin_name": "X", "walkin_phone": "0900000000"},
+        json={
+            "court_id": court_with_slots["id"],
+            "slot_ids": available_slots[:1],
+            "walkin_name": "X",
+            "walkin_phone": "0900000000",
+        },
         headers={**customer_headers, "Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 403
@@ -410,8 +437,11 @@ async def test_get_booking(
 
 
 async def test_get_booking_by_owner(
-    client: AsyncClient, customer_headers: dict, owner_headers: dict,
-    court_with_slots: dict, available_slots: list
+    client: AsyncClient,
+    customer_headers: dict,
+    owner_headers: dict,
+    court_with_slots: dict,
+    available_slots: list,
 ) -> None:
     create_r = await client.post(
         "/bookings",
@@ -425,8 +455,11 @@ async def test_get_booking_by_owner(
 
 
 async def test_customer_cannot_see_other_booking(
-    client: AsyncClient, customer_headers: dict, customer2_headers: dict,
-    court_with_slots: dict, available_slots: list
+    client: AsyncClient,
+    customer_headers: dict,
+    customer2_headers: dict,
+    court_with_slots: dict,
+    available_slots: list,
 ) -> None:
     create_r = await client.post(
         "/bookings",
@@ -453,8 +486,11 @@ async def test_list_my_bookings(
 
 
 async def test_owner_list_bookings(
-    client: AsyncClient, owner_headers: dict, customer_headers: dict,
-    court_with_slots: dict, available_slots: list
+    client: AsyncClient,
+    owner_headers: dict,
+    customer_headers: dict,
+    court_with_slots: dict,
+    available_slots: list,
 ) -> None:
     await client.post(
         "/bookings",
@@ -466,9 +502,7 @@ async def test_owner_list_bookings(
     assert r.json()["total"] >= 1
 
 
-async def test_booking_not_found(
-    client: AsyncClient, customer_headers: dict
-) -> None:
+async def test_booking_not_found(client: AsyncClient, customer_headers: dict) -> None:
     r = await client.get(f"/bookings/{uuid.uuid4()}", headers=customer_headers)
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "BOOKING_NOT_FOUND"

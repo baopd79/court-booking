@@ -62,3 +62,19 @@ class PaginatedBookingResponse(SQLModel):
     page: int
     limit: int
     has_next: bool
+
+
+class CancelBookingRequest(SQLModel):
+    reason: str | None = None
+
+
+class CancelBookingResponse(SQLModel):
+    booking_id: UUID
+    status: BookingStatus
+    refund_amount: Decimal
+    refund_status: str | None  # "pending" | None
+
+
+class CheckInResponse(SQLModel):
+    booking_id: UUID
+    status: BookingStatus
