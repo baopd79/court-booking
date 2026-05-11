@@ -1,7 +1,8 @@
 """Request/response schemas for facility module."""
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator
@@ -113,3 +114,39 @@ class PaginatedCourtResponse(SQLModel):
     page: int
     limit: int
     has_next: bool
+
+
+# ===== Slot =====
+
+
+class SlotAvailability(SQLModel):
+    id: int
+    slot_start: datetime
+    slot_end: datetime
+    status: Literal["available", "unavailable", "closed"]
+    price: Decimal
+
+
+class CourtAvailability(SQLModel):
+    id: UUID
+    name: str
+    sport_type: SportType
+    slots: list[SlotAvailability]
+
+
+class AvailabilityResponse(SQLModel):
+    date: date
+    facility_id: UUID
+    courts: list[CourtAvailability]
+
+
+class SlotRangeRequest(SQLModel):
+    """Request body for bulk close/reopen slots."""
+
+    date: date
+    start_time: time
+    end_time: time
+
+
+class SlotUpdateResult(SQLModel):
+    updated: int
