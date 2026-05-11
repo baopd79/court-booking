@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
+    "aiosmtplib>=5.1.0",
     "alembic>=1.18.4",
     "apscheduler>=3.11.2",
     "asyncpg>=0.31.0",
