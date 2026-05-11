@@ -13,7 +13,12 @@ from app.core.security import decode_access_token
 from app.modules.auth.models import User, UserRole, UserStatus
 from app.modules.auth.repository import UserRepository
 from app.modules.auth.service import AuthService
-from app.modules.facility.service import CourtService, FacilityService, PricingRuleService
+from app.modules.facility.service import (
+    CourtService,
+    FacilityService,
+    PricingRuleService,
+    SlotService,
+)
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -57,9 +62,14 @@ def get_pricing_service(session: AsyncSession = Depends(get_db)) -> PricingRuleS
     return PricingRuleService(session)
 
 
+def get_slot_service(session: AsyncSession = Depends(get_db)) -> SlotService:
+    return SlotService(session)
+
+
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 OwnerDep = Annotated[User, Depends(get_current_owner)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 FacilityServiceDep = Annotated[FacilityService, Depends(get_facility_service)]
 CourtServiceDep = Annotated[CourtService, Depends(get_court_service)]
 PricingServiceDep = Annotated[PricingRuleService, Depends(get_pricing_service)]
+SlotServiceDep = Annotated[SlotService, Depends(get_slot_service)]

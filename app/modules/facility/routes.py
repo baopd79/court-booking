@@ -1,11 +1,19 @@
 """HTTP routes for facility module."""
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.core.deps import CourtServiceDep, FacilityServiceDep, OwnerDep, PricingServiceDep
+from app.core.deps import (
+    CourtServiceDep,
+    FacilityServiceDep,
+    OwnerDep,
+    PricingServiceDep,
+    SlotServiceDep,
+)
 from app.modules.facility.schemas import (
+    AvailabilityResponse,
     CourtCreate,
     CourtResponse,
     CourtUpdate,
@@ -16,6 +24,8 @@ from app.modules.facility.schemas import (
     PaginatedFacilityResponse,
     PricingRuleReplace,
     PricingRuleResponse,
+    SlotRangeRequest,
+    SlotUpdateResult,
 )
 
 router = APIRouter(tags=["facility"])
@@ -69,6 +79,19 @@ async def delete_facility(
     facility_service: FacilityServiceDep,
 ) -> None:
     await facility_service.delete(facility_id, owner)
+
+
+# ===== Slots: public availability — MUST come before /courts/{court_id} =====
+
+
+@router.get("/courts/availability", response_model=AvailabilityResponse)
+async def get_availability(
+    facility_id: UUID,
+    date: date,
+    slot_service: SlotServiceDep,
+    court_id: UUID | None = Query(None),
+) -> AvailabilityResponse:
+    return await slot_service.get_availability(facility_id, date, court_id=court_id)
 
 
 # ===== Courts =====
@@ -142,3 +165,32 @@ async def replace_pricing(
     pricing_service: PricingServiceDep,
 ) -> list[PricingRuleResponse]:
     return await pricing_service.replace(court_id, data, owner)
+
+
+# ===== Slots: owner close / reopen =====
+
+
+@router.post(
+    "/courts/{court_id}/slots/close",
+    response_model=SlotUpdateResult,
+)
+async def close_slots(
+    court_id: UUID,
+    data: SlotRangeRequest,
+    owner: OwnerDep,
+    slot_service: SlotServiceDep,
+) -> SlotUpdateResult:
+    return await slot_service.close_slots(court_id, data, owner)
+
+
+@router.post(
+    "/courts/{court_id}/slots/reopen",
+    response_model=SlotUpdateResult,
+)
+async def reopen_slots(
+    court_id: UUID,
+    data: SlotRangeRequest,
+    owner: OwnerDep,
+    slot_service: SlotServiceDep,
+) -> SlotUpdateResult:
+    return await slot_service.reopen_slots(court_id, data, owner)
