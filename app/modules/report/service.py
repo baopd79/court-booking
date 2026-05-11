@@ -2,7 +2,6 @@
 
 from datetime import date
 
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import User
@@ -22,6 +21,7 @@ class ReportService:
         facility_id: str | None = None,
     ) -> RevenueReportResponse:
         from uuid import UUID
+
         fac_id = UUID(facility_id) if facility_id else None
 
         total_revenue, total_bookings, by_court, by_day = await self._repo.revenue(

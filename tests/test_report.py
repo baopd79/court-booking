@@ -1,6 +1,5 @@
 """Integration tests for Slice 9 — Revenue Report."""
 
-import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -20,9 +19,9 @@ _PASSWORD = "pass1234"
 
 @pytest_asyncio.fixture
 async def owner_h(client: AsyncClient, db_session: AsyncSession, default_tenant: object) -> dict:
-    r = await client.post("/auth/register", json={
-        "email": _OWNER_EMAIL, "password": _PASSWORD, "role": "owner"
-    })
+    r = await client.post(
+        "/auth/register", json={"email": _OWNER_EMAIL, "password": _PASSWORD, "role": "owner"}
+    )
     assert r.status_code == 201
     result = await db_session.execute(select(User).where(User.email == _OWNER_EMAIL))
     u = result.scalar_one()
@@ -40,6 +39,7 @@ async def seeded(db_session: AsyncSession, owner_h: dict, default_tenant: object
     owner = result.scalar_one()
 
     from app.modules.auth.models import Tenant
+
     result = await db_session.execute(select(Tenant))
     tenant = result.scalar_one()
 
@@ -90,9 +90,7 @@ async def seeded(db_session: AsyncSession, owner_h: dict, default_tenant: object
     }
 
 
-async def test_revenue_report_total(
-    client: AsyncClient, owner_h: dict, seeded: dict
-) -> None:
+async def test_revenue_report_total(client: AsyncClient, owner_h: dict, seeded: dict) -> None:
     today = datetime.now(UTC).date()
     r = await client.get(
         f"/reports/revenue?from_date={today - timedelta(days=7)}&to_date={today}",
@@ -104,9 +102,7 @@ async def test_revenue_report_total(
     assert data["total_bookings"] == 2
 
 
-async def test_revenue_report_by_court(
-    client: AsyncClient, owner_h: dict, seeded: dict
-) -> None:
+async def test_revenue_report_by_court(client: AsyncClient, owner_h: dict, seeded: dict) -> None:
     today = datetime.now(UTC).date()
     r = await client.get(
         f"/reports/revenue?from_date={today - timedelta(days=7)}&to_date={today}",
@@ -120,9 +116,7 @@ async def test_revenue_report_by_court(
     assert court["bookings"] == 2
 
 
-async def test_revenue_report_by_day(
-    client: AsyncClient, owner_h: dict, seeded: dict
-) -> None:
+async def test_revenue_report_by_day(client: AsyncClient, owner_h: dict, seeded: dict) -> None:
     today = datetime.now(UTC).date()
     r = await client.get(
         f"/reports/revenue?from_date={today - timedelta(days=7)}&to_date={today}",
@@ -146,9 +140,7 @@ async def test_revenue_report_filter_by_facility(
     assert float(r.json()["total_revenue"]) == 600000.0
 
 
-async def test_revenue_report_empty_range(
-    client: AsyncClient, owner_h: dict, seeded: dict
-) -> None:
+async def test_revenue_report_empty_range(client: AsyncClient, owner_h: dict, seeded: dict) -> None:
     future = datetime.now(UTC).date() + timedelta(days=30)
     r = await client.get(
         f"/reports/revenue?from_date={future}&to_date={future}",
@@ -164,9 +156,10 @@ async def test_revenue_report_empty_range(
 async def test_revenue_report_requires_owner(
     client: AsyncClient, default_tenant: object, db_session: AsyncSession
 ) -> None:
-    r = await client.post("/auth/register", json={
-        "email": "cust@report.com", "password": _PASSWORD, "role": "customer"
-    })
+    r = await client.post(
+        "/auth/register",
+        json={"email": "cust@report.com", "password": _PASSWORD, "role": "customer"},
+    )
     result = await db_session.execute(select(User).where(User.email == "cust@report.com"))
     u = result.scalar_one()
     u.status = UserStatus.verified

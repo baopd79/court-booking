@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col, func, select
+from sqlmodel import func, select
 
 from app.modules.notification.models import Notification, NotificationStatus
 
@@ -43,11 +43,9 @@ class NotificationRepository:
             )
         ).scalar_one()
         items = list(
-            (
-                await self._session.execute(
-                    base.offset((page - 1) * limit).limit(limit)
-                )
-            ).scalars().all()
+            (await self._session.execute(base.offset((page - 1) * limit).limit(limit)))
+            .scalars()
+            .all()
         )
         return items, total
 

@@ -3,9 +3,9 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import func as sa_func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func as sa_func
 from sqlmodel import col, func, select
 
 from app.modules.booking.models import (

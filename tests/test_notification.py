@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.modules.auth.models import User, UserStatus
-from app.modules.booking.models import Booking, BookingStatus
+from app.modules.booking.models import Booking
 from app.modules.facility.service import SlotService
 from app.modules.notification.models import Notification, NotificationChannel, NotificationStatus
 from app.modules.notification.service import NotificationService
@@ -25,7 +25,9 @@ _PASSWORD = "pass1234"
 
 @pytest_asyncio.fixture
 async def owner_h(client: AsyncClient, db_session: AsyncSession, default_tenant: object) -> dict:
-    r = await client.post("/auth/register", json={"email": _OWNER_EMAIL, "password": _PASSWORD, "role": "owner"})
+    r = await client.post(
+        "/auth/register", json={"email": _OWNER_EMAIL, "password": _PASSWORD, "role": "owner"}
+    )
     assert r.status_code == 201
     result = await db_session.execute(select(User).where(User.email == _OWNER_EMAIL))
     u = result.scalar_one()
@@ -38,7 +40,9 @@ async def owner_h(client: AsyncClient, db_session: AsyncSession, default_tenant:
 
 @pytest_asyncio.fixture
 async def customer_h(client: AsyncClient, db_session: AsyncSession, default_tenant: object) -> dict:
-    r = await client.post("/auth/register", json={"email": _CUSTOMER_EMAIL, "password": _PASSWORD, "role": "customer"})
+    r = await client.post(
+        "/auth/register", json={"email": _CUSTOMER_EMAIL, "password": _PASSWORD, "role": "customer"}
+    )
     assert r.status_code == 201
     result = await db_session.execute(select(User).where(User.email == _CUSTOMER_EMAIL))
     u = result.scalar_one()
@@ -55,24 +59,38 @@ async def booking(
 ) -> dict:
     r = await client.post("/facilities", json={"name": "Notif Fac"}, headers=owner_h)
     fac_id = r.json()["id"]
-    r = await client.post("/courts", json={
-        "facility_id": fac_id, "name": "CN", "sport_type": "badminton", "default_price": "150000",
-    }, headers=owner_h)
+    r = await client.post(
+        "/courts",
+        json={
+            "facility_id": fac_id,
+            "name": "CN",
+            "sport_type": "badminton",
+            "default_price": "150000",
+        },
+        headers=owner_h,
+    )
     court_id = r.json()["id"]
 
     target = (datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)).date()
     dow = target.isoweekday() % 7
-    await client.put(f"/courts/{court_id}/pricing",
-        json={"rules": [{"day_of_week": dow, "start_time": "08:00", "end_time": "22:00", "price": "150000"}]},
+    await client.put(
+        f"/courts/{court_id}/pricing",
+        json={
+            "rules": [
+                {"day_of_week": dow, "start_time": "08:00", "end_time": "22:00", "price": "150000"}
+            ]
+        },
         headers=owner_h,
     )
     await SlotService(db_session).generate_for_court_on_date(uuid.UUID(court_id), target)
 
     from app.modules.facility.repository import SlotRepository
+
     slots = await SlotRepository(db_session).list_by_courts_and_date([uuid.UUID(court_id)], target)
     slot_ids = [s.id for s in slots[:2]]
 
-    r = await client.post("/bookings",
+    r = await client.post(
+        "/bookings",
         json={"court_id": court_id, "slot_ids": slot_ids},
         headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
     )
@@ -101,9 +119,7 @@ async def test_notify_booking_confirmed_creates_records(
     await svc.notify_booking_confirmed(b)
     await db_session.flush()
 
-    result = await db_session.execute(
-        select(Notification).where(Notification.booking_id == b.id)
-    )
+    result = await db_session.execute(select(Notification).where(Notification.booking_id == b.id))
     notifs = result.scalars().all()
     channels = {n.channel for n in notifs}
     assert NotificationChannel.in_app in channels
@@ -136,9 +152,7 @@ async def test_notify_booking_confirmed_in_app_auto_sent(
     assert in_app.sent_at is not None
 
 
-async def test_notify_email_failure_marks_failed(
-    db_session: AsyncSession, booking: dict
-) -> None:
+async def test_notify_email_failure_marks_failed(db_session: AsyncSession, booking: dict) -> None:
     mock_sender = AsyncMock()
     mock_sender.send = AsyncMock(side_effect=Exception("SMTP connection refused"))
     svc = NotificationService(db_session, email_sender=mock_sender)
@@ -236,6 +250,7 @@ async def test_retry_job_resends_failed(db_session: AsyncSession, booking: dict)
         original_init(self, session, email_sender=mock_sender)
 
     import app.modules.notification.service as notif_module
+
     original_cls_init = notif_module.NotificationService.__init__
     notif_module.NotificationService.__init__ = patched_init
 
@@ -251,7 +266,9 @@ async def test_retry_job_resends_failed(db_session: AsyncSession, booking: dict)
 # ===== HTTP endpoints =====
 
 
-async def test_list_notifications_empty(client: AsyncClient, customer_h: dict, default_tenant: object) -> None:
+async def test_list_notifications_empty(
+    client: AsyncClient, customer_h: dict, default_tenant: object
+) -> None:
     r = await client.get("/notifications", headers=customer_h)
     assert r.status_code == 200
     assert r.json()["total"] == 0
@@ -259,8 +276,7 @@ async def test_list_notifications_empty(client: AsyncClient, customer_h: dict, d
 
 
 async def test_list_notifications_shows_own_only(
-    client: AsyncClient, db_session: AsyncSession,
-    customer_h: dict, booking: dict
+    client: AsyncClient, db_session: AsyncSession, customer_h: dict, booking: dict
 ) -> None:
     mock_sender = AsyncMock()
     mock_sender.send = AsyncMock()
@@ -279,8 +295,7 @@ async def test_list_notifications_shows_own_only(
 
 
 async def test_mark_notification_read(
-    client: AsyncClient, db_session: AsyncSession,
-    customer_h: dict, booking: dict
+    client: AsyncClient, db_session: AsyncSession, customer_h: dict, booking: dict
 ) -> None:
     mock_sender = AsyncMock()
     mock_sender.send = AsyncMock()
@@ -303,8 +318,7 @@ async def test_mark_notification_read(
 
 
 async def test_mark_notification_read_other_user_forbidden(
-    client: AsyncClient, db_session: AsyncSession,
-    owner_h: dict, customer_h: dict, booking: dict
+    client: AsyncClient, db_session: AsyncSession, owner_h: dict, customer_h: dict, booking: dict
 ) -> None:
     mock_sender = AsyncMock()
     mock_sender.send = AsyncMock()

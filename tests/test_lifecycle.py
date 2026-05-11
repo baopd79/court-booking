@@ -22,7 +22,9 @@ _PASSWORD = "pass1234"
 
 
 async def _register_and_verify(client, db_session, email, role):
-    r = await client.post("/auth/register", json={"email": email, "password": _PASSWORD, "role": role})
+    r = await client.post(
+        "/auth/register", json={"email": email, "password": _PASSWORD, "role": role}
+    )
     assert r.status_code == 201
     result = await db_session.execute(select(User).where(User.email == email))
     user = result.scalar_one()
@@ -50,34 +52,52 @@ async def customer_h(client: AsyncClient, db_session: AsyncSession, default_tena
 async def court(client: AsyncClient, owner_h: dict) -> dict:
     r = await client.post("/facilities", json={"name": "LC Fac"}, headers=owner_h)
     fac_id = r.json()["id"]
-    r = await client.post("/courts", json={
-        "facility_id": fac_id, "name": "Court LC",
-        "sport_type": "badminton", "default_price": "150000",
-    }, headers=owner_h)
+    r = await client.post(
+        "/courts",
+        json={
+            "facility_id": fac_id,
+            "name": "Court LC",
+            "sport_type": "badminton",
+            "default_price": "150000",
+        },
+        headers=owner_h,
+    )
     assert r.status_code == 201
     return r.json()
 
 
 @pytest_asyncio.fixture
-async def slots(client: AsyncClient, court: dict, owner_h: dict, db_session: AsyncSession) -> list[int]:
+async def slots(
+    client: AsyncClient, court: dict, owner_h: dict, db_session: AsyncSession
+) -> list[int]:
     """Pricing + generate slots 2 days ahead (> 24h away for refund eligibility)."""
     from datetime import date
+
     target = date.today() + timedelta(days=2)
     dow = target.isoweekday() % 7
-    r = await client.put(f"/courts/{court['id']}/pricing",
-        json={"rules": [{"day_of_week": dow, "start_time": "08:00", "end_time": "22:00", "price": "150000"}]},
+    r = await client.put(
+        f"/courts/{court['id']}/pricing",
+        json={
+            "rules": [
+                {"day_of_week": dow, "start_time": "08:00", "end_time": "22:00", "price": "150000"}
+            ]
+        },
         headers=owner_h,
     )
     assert r.status_code == 200
     await SlotService(db_session).generate_for_court_on_date(uuid.UUID(court["id"]), target)
     from app.modules.facility.repository import SlotRepository
-    all_slots = await SlotRepository(db_session).list_by_courts_and_date([uuid.UUID(court["id"])], target)
+
+    all_slots = await SlotRepository(db_session).list_by_courts_and_date(
+        [uuid.UUID(court["id"])], target
+    )
     return [s.id for s in all_slots[:4]]
 
 
 @pytest_asyncio.fixture
 async def booking(client: AsyncClient, customer_h: dict, court: dict, slots: list) -> dict:
-    r = await client.post("/bookings",
+    r = await client.post(
+        "/bookings",
         json={"court_id": court["id"], "slot_ids": slots[:2]},
         headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
     )
@@ -91,14 +111,15 @@ async def booking(client: AsyncClient, customer_h: dict, court: dict, slots: lis
 async def test_cancel_pending_payment_frees_slots(
     client: AsyncClient, db_session: AsyncSession, booking: dict, customer_h: dict, slots: list
 ) -> None:
-    r = await client.post(f"/bookings/{booking['id']}/cancel",
+    r = await client.post(
+        f"/bookings/{booking['id']}/cancel",
         json={},
         headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "cancelled"
-    assert data["refund_amount"] == "0"   # pending_payment → no payment made
+    assert data["refund_amount"] == "0"  # pending_payment → no payment made
     assert data["refund_status"] is None
 
     result = await db_session.execute(select(Slot).where(Slot.id.in_(slots[:2])))  # type: ignore[union-attr]
@@ -134,8 +155,10 @@ async def test_cancel_payment_processing_returns_409(
     db_session.add(b)
     await db_session.flush()
 
-    r = await client.post(f"/bookings/{booking['id']}/cancel",
-        json={}, headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
+    r = await client.post(
+        f"/bookings/{booking['id']}/cancel",
+        json={},
+        headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "BOOKING_NOT_CANCELLABLE"
@@ -150,8 +173,10 @@ async def test_cancel_terminal_state_returns_409(
     db_session.add(b)
     await db_session.flush()
 
-    r = await client.post(f"/bookings/{booking['id']}/cancel",
-        json={}, headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
+    r = await client.post(
+        f"/bookings/{booking['id']}/cancel",
+        json={},
+        headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 409
 
@@ -178,7 +203,8 @@ async def test_cancel_confirmed_over_24h_creates_refund(
     db_session.add(payment)
     await db_session.flush()
 
-    r = await client.post(f"/bookings/{booking['id']}/cancel",
+    r = await client.post(
+        f"/bookings/{booking['id']}/cancel",
         json={"reason": "Changed mind"},
         headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
     )
@@ -213,14 +239,19 @@ async def test_cancel_confirmed_under_24h_no_refund(
     db_session.add(b)
 
     payment = Payment(
-        booking_id=b.id, method=PaymentMethod.vnpay, amount=b.total_amount,
-        status=PaymentStatus.success, paid_at=datetime.now(UTC).replace(tzinfo=None),
+        booking_id=b.id,
+        method=PaymentMethod.vnpay,
+        amount=b.total_amount,
+        status=PaymentStatus.success,
+        paid_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db_session.add(payment)
     await db_session.flush()
 
-    r = await client.post(f"/bookings/{booking['id']}/cancel",
-        json={}, headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
+    r = await client.post(
+        f"/bookings/{booking['id']}/cancel",
+        json={},
+        headers={**customer_h, "Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 200
     assert r.json()["refund_amount"] == "0"

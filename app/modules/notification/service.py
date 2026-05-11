@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.email import EmailSender, NoOpEmailSender
-from app.core.exceptions import ForbiddenError, BookingNotFoundError
+from app.core.exceptions import BookingNotFoundError, ForbiddenError
 from app.modules.auth.models import User
 from app.modules.auth.repository import UserRepository
 from app.modules.booking.models import Booking
@@ -78,9 +78,7 @@ class NotificationService:
         payload = {"booking_id": str(booking.id), "court_id": str(booking.court_id)}
         await self._notify(user, booking.id, "payment_failed", payload)
 
-    async def notify_booking_cancelled(
-        self, booking: Booking, refund_amount: str = "0"
-    ) -> None:
+    async def notify_booking_cancelled(self, booking: Booking, refund_amount: str = "0") -> None:
         if not booking.customer_id:
             return
         user = await self._user_repo.get_by_id(booking.customer_id)
@@ -178,6 +176,7 @@ class NotificationService:
         sender = self._email_sender
         if sender is None:
             from app.core.email import get_email_sender
+
             sender = get_email_sender()
 
         try:

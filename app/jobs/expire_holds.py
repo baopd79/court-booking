@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_engine
 from app.modules.booking.models import BookingStatus, CancelledBy
-from app.modules.booking.repository import BookingRepository, BookingSlotRepository, SlotLockRepository
+from app.modules.booking.repository import (
+    BookingRepository,
+    BookingSlotRepository,
+    SlotLockRepository,
+)
 
 logger = logging.getLogger(__name__)
 

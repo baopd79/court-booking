@@ -39,8 +39,7 @@ class ReportRepository:
 
         def _base(stmt):
             return (
-                stmt
-                .join(Booking, Payment.booking_id == Booking.id)
+                stmt.join(Booking, Payment.booking_id == Booking.id)
                 .join(Court, Booking.court_id == Court.id)
                 .join(Facility, Court.facility_id == Facility.id)
                 .where(*base_filters)
@@ -49,10 +48,12 @@ class ReportRepository:
         # ===== Total =====
         total_row = (
             await self._session.execute(
-                _base(select(
-                    func.coalesce(func.sum(Payment.amount), 0).label("revenue"),
-                    func.count(Payment.id).label("bookings"),
-                ))
+                _base(
+                    select(
+                        func.coalesce(func.sum(Payment.amount), 0).label("revenue"),
+                        func.count(Payment.id).label("bookings"),
+                    )
+                )
             )
         ).one()
         total_revenue = Decimal(str(total_row.revenue))
@@ -61,13 +62,15 @@ class ReportRepository:
         # ===== By court =====
         court_rows = (
             await self._session.execute(
-                _base(select(
-                    Court.id,
-                    Court.name,
-                    Court.sport_type,
-                    func.sum(Payment.amount).label("revenue"),
-                    func.count(Payment.id).label("bookings"),
-                ))
+                _base(
+                    select(
+                        Court.id,
+                        Court.name,
+                        Court.sport_type,
+                        func.sum(Payment.amount).label("revenue"),
+                        func.count(Payment.id).label("bookings"),
+                    )
+                )
                 .group_by(Court.id, Court.name, Court.sport_type)
                 .order_by(func.sum(Payment.amount).desc())
             )
@@ -87,11 +90,13 @@ class ReportRepository:
         # ===== By day =====
         day_rows = (
             await self._session.execute(
-                _base(select(
-                    func.date(Payment.paid_at).label("day"),
-                    func.sum(Payment.amount).label("revenue"),
-                    func.count(Payment.id).label("bookings"),
-                ))
+                _base(
+                    select(
+                        func.date(Payment.paid_at).label("day"),
+                        func.sum(Payment.amount).label("revenue"),
+                        func.count(Payment.id).label("bookings"),
+                    )
+                )
                 .group_by(func.date(Payment.paid_at))
                 .order_by(func.date(Payment.paid_at))
             )

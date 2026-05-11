@@ -26,9 +26,7 @@ class NotificationStatus(StrEnum):
 
 class Notification(SQLModel, table=True):
     __tablename__ = "notifications"
-    __table_args__ = (
-        sa.Index("idx_notifications_user_status", "user_id", "status"),
-    )
+    __table_args__ = (sa.Index("idx_notifications_user_status", "user_id", "status"),)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(foreign_key="users.id")
@@ -44,9 +42,7 @@ class Notification(SQLModel, table=True):
     event_type: str = Field(sa_column=sa.Column(sa.String(64), nullable=False))
     status: NotificationStatus = Field(
         default=NotificationStatus.pending,
-        sa_column=sa.Column(
-            sa.Enum(NotificationStatus, name="notificationstatus"), nullable=False
-        ),
+        sa_column=sa.Column(sa.Enum(NotificationStatus, name="notificationstatus"), nullable=False),
     )
     payload: dict = Field(
         default_factory=dict,
@@ -55,12 +51,8 @@ class Notification(SQLModel, table=True):
     retry_count: int = Field(
         default=0, sa_column=sa.Column(sa.Integer, nullable=False, server_default="0")
     )
-    sent_at: datetime | None = Field(
-        default=None, sa_column=sa.Column(sa.DateTime, nullable=True)
-    )
-    read_at: datetime | None = Field(
-        default=None, sa_column=sa.Column(sa.DateTime, nullable=True)
-    )
+    sent_at: datetime | None = Field(default=None, sa_column=sa.Column(sa.DateTime, nullable=True))
+    read_at: datetime | None = Field(default=None, sa_column=sa.Column(sa.DateTime, nullable=True))
     created_at: datetime = Field(
         default_factory=_utcnow,
         sa_column=sa.Column(sa.DateTime, nullable=False),

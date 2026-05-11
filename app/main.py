@@ -34,8 +34,8 @@ from app.modules.booking.routes import router as booking_router
 from app.modules.facility.routes import router as facility_router
 from app.modules.facility.service import SlotService
 from app.modules.notification.routes import router as notification_router
-from app.modules.report.routes import router as report_router
 from app.modules.payment.routes import router as payment_router
+from app.modules.report.routes import router as report_router
 
 settings = get_settings()
 

@@ -354,6 +354,7 @@ class BookingService:
         await self._session.commit()
 
         from app.modules.notification.service import NotificationService
+
         await NotificationService(self._session).notify_booking_cancelled(
             booking, refund_amount=str(refund_amount)
         )
@@ -382,6 +383,7 @@ class BookingService:
         await self._session.commit()
 
         from app.modules.notification.service import NotificationService
+
         await NotificationService(self._session).notify_booking_cancelled(
             booking, refund_amount=str(refund_amount)
         )

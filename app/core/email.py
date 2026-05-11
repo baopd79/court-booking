@@ -53,6 +53,7 @@ class NoOpEmailSender:
 
 def get_email_sender() -> EmailSender:
     from app.core.config import get_settings
+
     s = get_settings()
     return EmailSender(
         host=s.smtp_host,

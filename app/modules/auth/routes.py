@@ -18,9 +18,7 @@ from app.modules.auth.schemas import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post(
-    "/register", status_code=status.HTTP_201_CREATED, response_model=UserResponse
-)
+@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=UserResponse)
 async def register(
     data: RegisterRequest,
     auth_service: AuthServiceDep,
@@ -83,6 +81,4 @@ async def resend_verification(
     auth_service: AuthServiceDep,
 ) -> dict[str, str]:
     await auth_service.resend_verification(data)
-    return {
-        "message": "If your email is registered and unverified, a new link has been sent"
-    }
+    return {"message": "If your email is registered and unverified, a new link has been sent"}

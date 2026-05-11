@@ -193,6 +193,7 @@ class PaymentService:
         await self._session.commit()
 
         from app.modules.notification.service import NotificationService
+
         notif_svc = NotificationService(self._session)
         if response_code == "00":
             await notif_svc.notify_booking_confirmed(booking)

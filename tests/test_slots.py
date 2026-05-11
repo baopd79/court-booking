@@ -134,7 +134,7 @@ async def test_availability_no_auth_required(
 async def test_availability_returns_correct_slot_count(
     client: AsyncClient, facility: dict, court_with_pricing: dict, generated_slots: int
 ) -> None:
-    """2 pricing rules × 8h each ÷ 1h/slot = 16 slots."""
+    """2 pricing rules nhân 8h each ÷ 1h/slot = 16 slots."""
     assert generated_slots == 16
     r = await client.get(f"/courts/availability?facility_id={facility['id']}&date={_TOMORROW}")
     body = r.json()
